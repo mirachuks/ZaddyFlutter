@@ -68,7 +68,7 @@ class AuthController extends Controller
         return [
 
             'token' => $token,
-            'user' => JWTAuth::user()->load(['userwallet', 'staticAccount']),
+            'user' => JWTAuth::user()->load(['userwallet']),
         ];
 
     }
