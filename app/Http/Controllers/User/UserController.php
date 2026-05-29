@@ -28,6 +28,7 @@ class UserController extends Controller
         $save->email = $request['email'];
         $save->password = Hash::make($request['password']);
         $save->status = 'active';
+        $save->is_verified = 'yes';
         $save->user_type = $request['user_type'];
         $save->save();
         // event(new UserSignUp($save));
