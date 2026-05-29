@@ -413,4 +413,6 @@ class UserWalletController extends Controller
             ]);
         }
 
+   }
+
 }
