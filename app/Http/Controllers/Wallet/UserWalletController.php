@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Wallet;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\UserWallet;
+use App\Models\WalletTransaction;
+use DB;
 
 class UserWalletController extends Controller
 {
@@ -66,7 +69,7 @@ class UserWalletController extends Controller
             $credit->balance = $credit->balance + $request['amount'];
             $credit->save();
             // NewNotificationController::save($data);
-           return UserTransactionHistoryController::save($data);
+           return WalletTransaction::save($data);
            // Mailer::creditMail($credit->user->email, $request['amount'], $credit->balance, $request['purpose']);
             //return $credit;
 
