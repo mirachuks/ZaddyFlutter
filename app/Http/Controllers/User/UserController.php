@@ -126,7 +126,7 @@ class UserController extends Controller
         if(!empty($id)){
             return $data = User::where(['id' => $id])->with(['userwallet'])->first();
         }elseif(empty($id)){
-              return $data = User::whereNotNull('id')->where('status', 'active')->with(['userLevel'])->orderBy('created_at', 'DESC')->paginate(30);
+              return $data = User::whereNotNull('id')->where('status', 'active')->with(['userwallet'])->orderBy('created_at', 'DESC')->paginate(30);
 
             }else{
           return response()->json([
