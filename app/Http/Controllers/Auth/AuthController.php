@@ -46,7 +46,7 @@ class AuthController extends Controller
             'status' => 'success',
             'token' => $token,
             'message' => 'Login Succesful',
-            'user' => JWTAuth::user()->load(['userwallet', 'staticAccount']),
+            'user' => JWTAuth::user()->load(['userwallet']),
             ]);
 
     }

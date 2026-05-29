@@ -10,7 +10,7 @@ use App\Http\Controllers\Rider\RiderGuarantorController;
 use App\Http\Controllers\UserProfile\UserProfileController;
 use App\Http\Controllers\Api\EscrowTransactionController;
 
-
+ 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
@@ -23,7 +23,8 @@ Route::get('/user/auth', [AuthController::class, 'auth']);
 
 
 // login routes
-Route::post('user/login', [AuthController::class, 'login']);
+Route::post('user/login2', [AuthController::class, 'login']);
+
 Route::get('user/logout', [AuthController::class, 'logout']);
 Route::get('user/profile', [AuthController::class, 'profile']);
 
