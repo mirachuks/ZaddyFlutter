@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('password');
             $table->string('status');
             $table->string('user_type'); // rider, user
-            $table->string('is_verified');
+            $table->string('is_verified')->default('yes');
             $table->rememberToken();
             $table->timestamps();
         });
