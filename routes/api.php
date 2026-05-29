@@ -23,7 +23,8 @@ Route::get('/user/auth', [AuthController::class, 'auth']);
 
 
 // login routes
-Route::post('user/login', [AuthController::class, 'login']);
+Route::post('user/login', [AuthController::class, 'loginUser']);
+Route::post('rider/login', [AuthController::class, 'loginRider']);
 
 Route::get('user/logout', [AuthController::class, 'logout']);
 Route::get('user/profile', [AuthController::class, 'profile']);

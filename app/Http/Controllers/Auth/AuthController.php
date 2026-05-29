@@ -17,7 +17,7 @@ class AuthController extends Controller
     *
     * @param $request
     */
-    public function login(Request $request)
+    public function loginUser(Request $request)
     {
         $validation = Validator::make($request->all(),
             [
@@ -30,7 +30,7 @@ class AuthController extends Controller
         if($validation->fails()){
             return $validation->errors();
         }
-        $credentials = ['email' => $request['email'], 'password' => $request['password'], 'status' => 'active'];
+        $credentials = ['email' => $request['email'], 'password' => $request['password'], 'status' => 'active', 'user_type'=>'user'];
 
         $token = JWTAuth::attempt($credentials);
 
@@ -50,6 +50,47 @@ class AuthController extends Controller
             ]);
 
     }
+
+
+     /*
+    * Logins in a user
+    *
+    * @param $request
+    */
+    public function loginRider(Request $request)
+    {
+        $validation = Validator::make($request->all(),
+            [
+
+                "password" => "required",
+                "email" =>"required|email"
+
+            ]);
+
+        if($validation->fails()){
+            return $validation->errors();
+        }
+        $credentials = ['email' => $request['email'], 'password' => $request['password'], 'status' => 'active', 'user_type'=>'rider'];
+
+        $token = JWTAuth::attempt($credentials);
+
+        if (!$token) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid user details',
+                ]);
+        }
+       // UserController::updateLastLogin(JWTAuth::user()->id);
+        $user = JWTAuth::user();
+        return response()->json([
+            'status' => 'success',
+            'token' => $token,
+            'message' => 'Login Succesful',
+            'user' => JWTAuth::user()->load(['userwallet']),
+            ]);
+
+    }
+
 
     /**
      * Logs a user in at registration point
