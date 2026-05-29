@@ -10,7 +10,7 @@ use App\Http\Controllers\Email\Mailer;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
-use DB, Auth, Validator, Response, Hash, JWTAuth, Str;
+use DB, Auth, Validator, Response, JWTAuth, Str;
 use Carbon\Carbon;
 
 class UserController extends Controller
