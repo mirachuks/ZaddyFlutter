@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
-use JWTAuth, Validator, Hash;
+use JWTAuth, Validator;
 
 class AuthController extends Controller
 {
@@ -95,7 +95,7 @@ class AuthController extends Controller
     $token = $user->createToken('auth_token')->plainTextToken;
 
     return response()->json(['access_token' => $token, 'token_type' => 'Bearer']);
-        }
+    }
 
 
 }
