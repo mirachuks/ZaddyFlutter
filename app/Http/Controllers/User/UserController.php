@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Wallet\UserWalletController;
 use App\Http\Controllers\Funding\BillStackController;
+use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Email\Mailer;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
