@@ -59,6 +59,11 @@ class JobApplication extends Model
         return $query->where('status', 'withdrawn');
     }
 
+    public function scopeCancelled($query)
+    {
+        return $query->where('status', 'cancelled');
+    }
+
     public function scopeForJob($query, int $jobId)
     {
         return $query->where('job_id', $jobId);
@@ -68,5 +73,4 @@ class JobApplication extends Model
     {
         return $query->where('user_rider_id', $userId);
     }
-
 }

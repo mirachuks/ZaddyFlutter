@@ -3,26 +3,34 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\Api\JobController;
+use App\Http\Controllers\Job\JobController;
+use App\Http\Controllers\Job\JobApplicationController;
 use App\Http\Controllers\User\UserController;
 use App\Http\Controllers\Rider\RiderProfileController;
 use App\Http\Controllers\Rider\RiderGuarantorController;
 use App\Http\Controllers\UserProfile\UserProfileController;
-use App\Http\Controllers\Api\EscrowTransactionController;
+use App\Http\Controllers\Escrow\EscrowTransactionController;
+use App\Http\Controllers\Report\ReportController;
+use App\Http\Controllers\Review\ReviewController;
+use App\Http\Controllers\Notification\AppNotificationController;
+use App\Http\Controllers\Payment\ManualPaymentController;
+use App\Http\Controllers\Wallet\UserWalletController;
+use App\Http\Controllers\Withdrawal\WithdrawalController;
 
- 
+
 Route::get('/user', function (Request $request) {
     return $request->user();
-})->middleware('auth:sanctum');
+})->middleware('auth:api');
 
-  // santum login
+// JWT auth login
 Route::get('/user/auth', [AuthController::class, 'auth']);
-     
-  
+
+
 
 
 
 // login routes
+Route::post('login', [AuthController::class, 'login']);
 Route::post('user/login', [AuthController::class, 'loginUser']);
 Route::post('rider/login', [AuthController::class, 'loginRider']);
 
@@ -68,108 +76,145 @@ Route::get('user/set-password/{email}/{password}', [UserController::class, 'setP
 // ── Public (no auth required) ─────────────────────────────────────────────────
 // Dispatch / booking service queries for available riders
 Route::get('riders/available', [RiderProfileController::class, 'availableInZone'])
-     ->name('riders.available');
+    ->name('riders.available');
 
 // ── Authenticated Rider ───────────────────────────────────────────────────────
-
-
+Route::middleware(['auth:api'])->group(function () {    // User wallet endpoints used by both customers and riders
+    Route::get('wallet/me', [UserWalletController::class, 'myWallet'])
+        ->name('wallet.me');
+    Route::get('wallet/transactions', [UserWalletController::class, 'myTransactions'])
+        ->name('wallet.transactions');
+    Route::post('wallet/debit', [UserWalletController::class, 'debitWallet'])
+        ->name('wallet.debit');
+    Route::post('wallet/topup', [UserWalletController::class, 'topUpWallet'])
+        ->name('wallet.topup');
+    Route::post('wallet/withdraw', [WithdrawalController::class, 'request'])
+        ->name('wallet.withdraw');
+    Route::get('notifications', [AppNotificationController::class, 'index'])
+        ->name('notifications.index');
+    Route::get('notifications/unread-count', [AppNotificationController::class, 'unreadCount'])
+        ->name('notifications.unreadCount');
+    Route::patch('notifications/{notification}/read', [AppNotificationController::class, 'markAsRead'])
+        ->name('notifications.read');
+    Route::post('notifications/read-all', [AppNotificationController::class, 'markAllAsRead'])
+        ->name('notifications.readAll');
     // Own profile
     Route::get('rider/me', [RiderProfileController::class, 'myProfile'])
-         ->name('rider.me');
+        ->name('rider.me');
 
-    // Create profile (one per user — enforced in controller)
+    // Final rider registration/profile completion.
+    // Guarantor details are consolidated into the rider_profiles table via the RiderProfileController.
     Route::post('riders', [RiderProfileController::class, 'store'])
-         ->name('riders.store');
+        ->name('riders.store');
 
     // Update own profile fields + image
     Route::put('riders/{riderProfile}', [RiderProfileController::class, 'update'])
-         ->name('riders.update');
+        ->name('riders.update');
 
     // GPS ping — called frequently by mobile app
     Route::patch('riders/{riderProfile}/location', [RiderProfileController::class, 'updateLocation'])
-         ->name('riders.location');
+        ->name('riders.location');
 
     // Go online / offline
     Route::patch('riders/{riderProfile}/availability', [RiderProfileController::class, 'toggleAvailability'])
-         ->name('riders.availability');
+        ->name('riders.availability');
+
+    // Update bank details for rider (bank name/account number/code/account holder)
+    Route::patch('riders/{riderProfile}/bank', [RiderProfileController::class, 'updateBankDetails'])
+        ->name('riders.bank.update');
+
+    // Withdrawals
+    Route::post('withdrawals', [\App\Http\Controllers\Withdrawal\WithdrawalController::class, 'request'])
+        ->name('withdrawals.request');
+    Route::get('withdrawals/mine', [\App\Http\Controllers\Withdrawal\WithdrawalController::class, 'myWithdrawals'])
+        ->name('withdrawals.mine');
+    Route::post('payments/manual/notify', [ManualPaymentController::class, 'notify'])
+        ->name('payments.manual.notify');
+});
 
 
+// List guarantors for a specific rider
+// GET /api/rider-profiles/3/guarantors
+Route::get(
+    'rider-profiles/{riderProfile}/guarantors',
+    [RiderGuarantorController::class, 'byRider']
+)->name('rider.guarantors.index');
 
-  // List guarantors for a specific rider
-    // GET /api/rider-profiles/3/guarantors
-    Route::get(
-        'rider-profiles/{riderProfile}/guarantors',
-        [RiderGuarantorController::class, 'byRider']
-    )->name('rider.guarantors.index');
+// Add a guarantor to a rider
+// POST /api/rider-profiles/3/guarantors
+Route::post(
+    'rider-profiles/{riderProfile}/guarantors',
+    [RiderGuarantorController::class, 'store']
+)->name('rider.guarantors.store');
 
-    // Add a guarantor to a rider
-    // POST /api/rider-profiles/3/guarantors
-    Route::post(
-        'rider-profiles/{riderProfile}/guarantors',
-        [RiderGuarantorController::class, 'store']
-    )->name('rider.guarantors.store');
+// View a single guarantor
+// GET /api/guarantors/1
+Route::get(
+    'guarantors/{guarantor}',
+    [RiderGuarantorController::class, 'show']
+)->name('guarantors.show');
 
-    // View a single guarantor
-    // GET /api/guarantors/1
-    Route::get(
-        'guarantors/{guarantor}',
-        [RiderGuarantorController::class, 'show']
-    )->name('guarantors.show');
-
-    // Update a guarantor
-    // PUT /api/guarantors/1
-    Route::put(
-        'guarantors/{guarantor}',
-        [RiderGuarantorController::class, 'update']
-    )->name('guarantors.update');
+// Update a guarantor
+// PUT /api/guarantors/1
+Route::put(
+    'guarantors/{guarantor}',
+    [RiderGuarantorController::class, 'update']
+)->name('guarantors.update');
 
 
 // ── Admin Only ────────────────────────────────────────────────────────────────
-Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
+Route::middleware(['auth:api', 'role:admin'])->group(function () {
 
     // List all riders (paginated, filterable, sortable)
     Route::get('riders', [RiderProfileController::class, 'index'])
-         ->name('riders.index');
+        ->name('riders.index');
 
     // View any single rider
     Route::get('riders/{riderProfile}', [RiderProfileController::class, 'show'])
-         ->name('riders.show');
+        ->name('riders.show');
 
     // Set status: active | inactive | suspended | banned
     Route::patch('riders/{riderProfile}/status', [RiderProfileController::class, 'changeStatus'])
-         ->name('riders.status');
+        ->name('riders.status');
 
     // Post-trip trip counter (called by internal trip service)
     Route::patch('riders/{riderProfile}/trips/increment', [RiderProfileController::class, 'incrementTrips'])
-         ->name('riders.trips.increment');
+        ->name('riders.trips.increment');
 
     // Post-trip rating update
     Route::patch('riders/{riderProfile}/review-rank', [RiderProfileController::class, 'updateReviewRank'])
-         ->name('riders.reviewRank');
+        ->name('riders.reviewRank');
 
     // Hard delete + wipe image from storage
     Route::delete('riders/{riderProfile}', [RiderProfileController::class, 'destroy'])
-         ->name('riders.destroy');
+        ->name('riders.destroy');
 
+    // Admin withdrawal management
+    Route::get('admin/withdrawals', [\App\Http\Controllers\Withdrawal\AdminWithdrawalController::class, 'index'])
+        ->name('admin.withdrawals.index');
+    Route::post('admin/withdrawals/{withdrawal}/approve', [\App\Http\Controllers\Withdrawal\AdminWithdrawalController::class, 'approve'])
+        ->name('admin.withdrawals.approve');
+    Route::post('admin/withdrawals/{withdrawal}/decline', [\App\Http\Controllers\Withdrawal\AdminWithdrawalController::class, 'decline'])
+        ->name('admin.withdrawals.decline');
 });
 
-  // Logged-in user views their own profile
-    // GET /api/user-profiles/me
-    Route::get('user-profiles/me', [UserProfileController::class, 'myProfile'])
-         ->name('user-profiles.me');
+// Logged-in user views their own profile
+// GET /api/user-profiles/me
+Route::get('user-profiles/me', [UserProfileController::class, 'myProfile'])
+    ->name('user-profiles.me');
 
-    // Create own profile (one per user — enforced in controller)
-    // POST /api/user-profiles
-    Route::post('user-profiles', [UserProfileController::class, 'store'])
-         ->name('user-profiles.store');
+// Create own profile (one per user — enforced in controller)
+// POST /api/user-profiles
+Route::post('user-profiles', [UserProfileController::class, 'store'])
+    ->name('user-profiles.store');
 
-    // Update own profile
-    // PUT /api/user-profiles/{userProfile}
-    Route::put('user-profiles/{userProfile}', [UserProfileController::class, 'update'])
-         ->name('user-profiles.update');
+// Update own profile
+// PUT /api/user-profiles/{userProfile}
+Route::put('user-profiles/{userProfile}', [UserProfileController::class, 'update'])
+    ->name('user-profiles.update');
 
 
-         // ── Public ────────────────────────────────────────────────────────────────────
+// ── Public ────────────────────────────────────────────────────────────────────
 
 // Anyone can read a rider's reviews (customers browsing before booking)
 // GET /api/rider-profiles/3/reviews
@@ -187,103 +232,118 @@ Route::get(
 )->name('reviews.show');
 
 
-  // View all reviews the logged-in user has written
-    // GET /api/reviews/mine
-    Route::get('reviews/mine', [ReviewController::class, 'myReviews'])
-         ->name('reviews.mine');
+// View all reviews the logged-in user has written
+// GET /api/reviews/mine
+Route::get('reviews/mine', [ReviewController::class, 'myReviews'])
+    ->name('reviews.mine');
 
-    // Submit a review for a rider (one per user per rider)
-    // POST /api/rider-profiles/3/reviews
-    Route::post(
-        'rider-profiles/{riderProfile}/reviews',
-        [ReviewController::class, 'store']
-    )->name('rider.reviews.store');
+// Submit a review for a rider (one per user per rider)
+// POST /api/rider-profiles/3/reviews
+Route::post(
+    'rider-profiles/{riderProfile}/reviews',
+    [ReviewController::class, 'store']
+)->name('rider.reviews.store');
 
-    // Edit own review
-    // PUT /api/reviews/7
-    Route::put('reviews/{review}', [ReviewController::class, 'update'])
-         ->name('reviews.update');
+// Submit a review using a job reference
+// POST /api/reviews
+Route::middleware(['auth:api'])->post('reviews', [ReviewController::class, 'storeFromJob'])
+    ->name('reviews.store');
 
-    // Delete own review
-    // DELETE /api/reviews/7
-    Route::delete('reviews/{review}', [ReviewController::class, 'destroy'])
-         ->name('reviews.destroy');
+// Submit a report/dispute for a job
+// POST /api/reports
+Route::middleware(['auth:api'])->post('reports', [ReportController::class, 'store'])
+    ->name('reports.store');
+
+// Edit own review
+// PUT /api/reviews/7
+Route::put('reviews/{review}', [ReviewController::class, 'update'])
+    ->name('reviews.update');
+
+// Delete own review
+// DELETE /api/reviews/7
+Route::delete('reviews/{review}', [ReviewController::class, 'destroy'])
+    ->name('reviews.destroy');
 
 
-     // List all reviews across all riders (paginated + filterable)
-    // GET /api/reviews
-    // GET /api/reviews?rider_profile_id=3
-    // GET /api/reviews?user_id=5
-    // GET /api/reviews?min_score=1&max_score=3
-    // GET /api/reviews?search=rude
-    Route::get('reviews', [ReviewController::class, 'index'])
-         ->name('reviews.index');
+// List all reviews across all riders (paginated + filterable)
+// GET /api/reviews
+// GET /api/reviews?rider_profile_id=3
+// GET /api/reviews?user_id=5
+// GET /api/reviews?min_score=1&max_score=3
+// GET /api/reviews?search=rude
+Route::get('reviews', [ReviewController::class, 'index'])
+    ->name('reviews.index');
 
 
-     // Rider views all their own applications
-    // GET /api/job-applications/mine
-    // GET /api/job-applications/mine?status=pending
-    Route::get('job-applications/mine', [JobApplicationController::class, 'myApplications'])
-         ->name('job-applications.mine');
+// Rider views all their own applications
+// GET /api/job-applications/mine
+// GET /api/job-applications/mine?status=pending
+Route::middleware(['auth:api'])->get('job-applications/mine', [JobApplicationController::class, 'myApplications'])
+    ->name('job-applications.mine');
 
-    // Rider submits an application for a job
-    // POST /api/jobs/5/applications
-    Route::post(
-        'jobs/{job}/applications',
-        [JobApplicationController::class, 'store']
-    )->name('job.applications.store');
+// Rider's latest active application (defaults to status=accepted)
+// GET /api/job-applications/mine/active
+Route::middleware(['auth:api'])->get('job-applications/mine/active', [JobApplicationController::class, 'myActiveApplication'])
+    ->name('job-applications.mine.active');
 
-    // Job poster views all applications on their job
-    // GET /api/jobs/5/applications
-    // GET /api/jobs/5/applications?status=pending
-    Route::get(
-        'jobs/{job}/applications',
-        [JobApplicationController::class, 'byJob']
-    )->name('job.applications.index');
+// Rider submits an application for a job
+// POST /api/jobs/5/applications
+Route::middleware(['auth:api'])->post(
+    'jobs/{job}/applications',
+    [JobApplicationController::class, 'store']
+)->name('job.applications.store');
 
-    // View a single application (owner, job poster, or admin)
-    // GET /api/job-applications/12
-    Route::get(
-        'job-applications/{jobApplication}',
-        [JobApplicationController::class, 'show']
-    )->name('job-applications.show');
+// Job poster views all applications on their job
+// GET /api/jobs/5/applications
+// GET /api/jobs/5/applications?status=pending
+Route::middleware(['auth:api'])->get(
+    'jobs/{job}/applications',
+    [JobApplicationController::class, 'byJob']
+)->name('job.applications.index');
 
-    // Rider edits their own pending application
-    // PUT /api/job-applications/12
-    Route::put(
-        'job-applications/{jobApplication}',
-        [JobApplicationController::class, 'update']
-    )->name('job-applications.update');
+// View a single application (owner, job poster, or admin)
+// GET /api/job-applications/12
+Route::middleware(['auth:api'])->get(
+    'job-applications/{jobApplication}',
+    [JobApplicationController::class, 'show']
+)->name('job-applications.show');
 
-    // Job poster accepts or rejects an application
-    // PATCH /api/job-applications/12/status
-    // Body: { "status": "accepted" | "rejected" | "pending" }
-    Route::patch(
-        'job-applications/{jobApplication}/status',
-        [JobApplicationController::class, 'changeStatus']
-    )->name('job-applications.status');
+// Rider edits their own pending application
+// PUT /api/job-applications/12
+Route::middleware(['auth:api'])->put(
+    'job-applications/{jobApplication}',
+    [JobApplicationController::class, 'update']
+)->name('job-applications.update');
 
-    // Rider withdraws their own pending application
-    // PATCH /api/job-applications/12/withdraw
-    Route::patch(
-        'job-applications/{jobApplication}/withdraw',
-        [JobApplicationController::class, 'withdraw']
-    )->name('job-applications.withdraw');
+// Job poster accepts or rejects an application
+// PATCH /api/job-applications/12/status
+// Body: { "status": "accepted" | "rejected" | "pending" }
+Route::middleware(['auth:api'])->patch(
+    'job-applications/{jobApplication}/status',
+    [JobApplicationController::class, 'changeStatus']
+)->name('job-applications.status');
 
-     // List all applications across all jobs (paginated + filterable)
-    // GET /api/job-applications
-    // GET /api/job-applications?status=pending
-    // GET /api/job-applications?job_id=5
-    // GET /api/job-applications?user_rider_id=3
-    Route::get('job-applications', [JobApplicationController::class, 'index'])
-         ->name('job-applications.index');
+// Rider withdraws their own pending application
+// PATCH /api/job-applications/12/withdraw
+Route::middleware(['auth:api'])->patch(
+    'job-applications/{jobApplication}/withdraw',
+    [JobApplicationController::class, 'withdraw']
+)->name('job-applications.withdraw');
 
-    // Hard-delete an application
-    // DELETE /api/job-applications/12
-    Route::delete(
-        'job-applications/{jobApplication}',
-        [JobApplicationController::class, 'destroy']
-    )->name('job-applications.destroy');
+// List all applications across all jobs (paginated + filterable)
+// GET /api/job-applications
+// GET /api/job-applications?status=pending
+// GET /api/job-applications?job_id=5
+// GET /api/job-applications?user_rider_id=3
+Route::middleware(['auth:api'])->get('job-applications', [JobApplicationController::class, 'index'])
+    ->name('job-applications.index');
+
+// Hard-delete an application
+// DELETE /api/job-applications/12
+Route::middleware(['auth:api'])->delete(
+    'job-applications/{jobApplication}',
+    [JobApplicationController::class, 'destroy']
+)->name('job-applications.destroy');
 
 
 
@@ -300,118 +360,133 @@ Route::get(
 // GET /api/jobs?sort_by=price&sort_order=asc
 
 
-    Route::get('jobs', [JobController::class, 'index'])
-     ->name('jobs.index');
- 
+Route::get('jobs', [JobController::class, 'index'])
+    ->name('jobs.index');
+
+// Get available jobs for riders near a location
+// GET /api/jobs/available?latitude=6.5244&longitude=3.3792&radius=10
+Route::get('jobs/available', [JobController::class, 'available'])
+    ->name('jobs.available');
+
 // View a single job with all its applications
 // GET /api/jobs/5
 Route::get('jobs/{job}', [JobController::class, 'show'])
-     ->name('jobs.show');
+    ->name('jobs.show');
 
 
 
-    // View all jobs posted by the logged-in user
-    // GET /api/jobs/mine
-    // GET /api/jobs/mine?status=open
-    Route::get('jobs/mine/list', [JobController::class, 'myJobs'])
-         ->name('jobs.mine');
- 
-    // Post a new job
-    // POST /api/jobs
-    Route::post('jobs', [JobController::class, 'store'])
-         ->name('jobs.store');
- 
-    // Edit an open job
-    // PUT /api/jobs/5
-    Route::put('jobs/{job}', [JobController::class, 'update'])
-         ->name('jobs.update');
- 
-    // Move job through status lifecycle (open → matched → in_progress → completed)
-    // PATCH /api/jobs/5/status
-    // Body: { "status": "matched" }
-    Route::patch('jobs/{job}/status', [JobController::class, 'changeStatus'])
-         ->name('jobs.status');
- 
-    // Shorthand: mark a job as delivered/completed and stamp delivered_at
-    // PATCH /api/jobs/5/deliver
-    Route::patch('jobs/{job}/deliver', [JobController::class, 'markDelivered'])
-         ->name('jobs.deliver');
- 
-    // Cancel an open or matched job
-    // PATCH /api/jobs/5/cancel
-    Route::patch('jobs/{job}/cancel', [JobController::class, 'cancel'])
-         ->name('jobs.cancel');
- 
-    // Push the expiry date forward on an open job
-    // PATCH /api/jobs/5/extend
-    // Body: { "expires_at": "2025-12-31 23:59:59" }
-    Route::patch('jobs/{job}/extend', [JobController::class, 'extendExpiry'])
-         ->name('jobs.extend');
+// View all jobs posted by the logged-in user
+// GET /api/my-jobs/{userId}
+// GET /api/my-jobs/{userId}?page=1&limit=20
+Route::get('my-jobs/{userId}', [JobController::class, 'myJobs'])
+    ->name('jobs.mine');
+
+// Post a new job
+// POST /api/jobs
+Route::post('jobs', [JobController::class, 'store'])
+    ->name('jobs.store');
+
+// Edit an open job
+// PUT /api/jobs/5
+Route::put('jobs/{job}', [JobController::class, 'update'])
+    ->name('jobs.update');
+
+// Move job through status lifecycle (open → matched → in_progress → completed)
+// PATCH /api/jobs/5/status
+// Body: { "status": "matched" }
+Route::patch('jobs/{job}/status', [JobController::class, 'changeStatus'])
+    ->name('jobs.status')
+    ->middleware('auth:api');
+
+// Rider accepts a job directly
+// PATCH /api/jobs/5/accept
+// Authenticated rider can accept a job, changes status to "accepted"
+Route::patch('jobs/{job}/accept', [JobController::class, 'acceptJob'])
+    ->name('jobs.accept')
+    ->middleware('auth:api');
+
+// Shorthand: mark a job as delivered/completed and stamp delivered_at
+// PATCH /api/jobs/5/deliver
+Route::patch('jobs/{job}/deliver', [JobController::class, 'markDelivered'])
+    ->name('jobs.deliver');
+
+// Auto-confirm delivery (used by client when customer doesn't confirm within timeout)
+// PATCH /api/jobs/5/auto-confirm
+Route::patch('jobs/{job}/auto-confirm', [JobController::class, 'autoConfirm'])
+    ->name('jobs.auto_confirm');
+
+// Cancel an open or matched job
+// PATCH /api/jobs/5/cancel
+Route::patch('jobs/{job}/cancel', [JobController::class, 'cancel'])
+    ->name('jobs.cancel');
+
+// Push the expiry date forward on an open job
+// PATCH /api/jobs/5/extend
+// Body: { "expires_at": "2025-12-31 23:59:59" }
+Route::patch('jobs/{job}/extend', [JobController::class, 'extendExpiry'])
+    ->name('jobs.extend');
 
 
-    // Hard-delete a job and all its applications
-    // DELETE /api/jobs/5
-    Route::delete('jobs/{job}', [JobController::class, 'destroy'])
-         ->name('jobs.destroy');
+// Hard-delete a job and all its applications
+// DELETE /api/jobs/5
+Route::delete('jobs/{job}', [JobController::class, 'destroy'])
+    ->name('jobs.destroy');
 
 
-
-    // -----------------------------------------------------------------
-        // CRUD
-        // -----------------------------------------------------------------
- 
-        // GET    /api/v1/escrow-transactions
-        // Query params: status, user_id, rider_profile_id, release_trigger, per_page
-        Route::get('/', [EscrowTransactionController::class, 'index'])
-            ->name('escrow.index');
- 
-        // POST   /api/v1/escrow-transactions
-        Route::post('/', [EscrowTransactionController::class, 'store'])
-            ->name('escrow.store');
- 
-        // GET    /api/v1/escrow-transactions/{escrowTransaction}
-        Route::get('/{escrowTransaction}', [EscrowTransactionController::class, 'show'])
-            ->name('escrow.show');
- 
-        // PUT    /api/v1/escrow-transactions/{escrowTransaction}
-        Route::put('/{escrowTransaction}', [EscrowTransactionController::class, 'update'])
-            ->name('escrow.update');
- 
-        // DELETE /api/v1/escrow-transactions/{escrowTransaction}
-        Route::delete('/{escrowTransaction}', [EscrowTransactionController::class, 'destroy'])
-            ->name('escrow.destroy');
- 
-        // -----------------------------------------------------------------
-        // STATUS TRANSITION ACTIONS
-        // -----------------------------------------------------------------
- 
-        // POST /api/v1/escrow-transactions/{escrowTransaction}/hold
-        // Called after payment gateway confirms funds received.
-        // Moves: pending → held
-        Route::post('/{escrowTransaction}/hold', [EscrowTransactionController::class, 'hold'])
-            ->name('escrow.hold');
- 
-        // POST /api/v1/escrow-transactions/{escrowTransaction}/release
-        // Body (OTP trigger only): { "otp": "123456" }
-        // Moves: held → released
-        Route::post('/{escrowTransaction}/release', [EscrowTransactionController::class, 'release'])
-            ->name('escrow.release');
- 
-        // POST /api/v1/escrow-transactions/{escrowTransaction}/refund
-        // Body (optional): { "reason": "..." }
-        // Moves: held → refunded
-        Route::post('/{escrowTransaction}/refund', [EscrowTransactionController::class, 'refund'])
-            ->name('escrow.refund');
- 
-        // POST /api/v1/escrow-transactions/{escrowTransaction}/dispute
-        // Body: { "reason": "..." }
-        // Moves: held → disputed
-        Route::post('/{escrowTransaction}/dispute', [EscrowTransactionController::class, 'dispute'])
-            ->name('escrow.dispute');
+// Webhook endpoints (public)
+require base_path('routes/webhooks.php');
 
 
 
+// -----------------------------------------------------------------
+// CRUD
+// -----------------------------------------------------------------
 
+// GET    /api/v1/escrow-transactions
+// Query params: status, user_id, rider_profile_id, release_trigger, per_page
+Route::get('/', [EscrowTransactionController::class, 'index'])
+    ->name('escrow.index');
 
+// POST   /api/v1/escrow-transactions
+Route::post('/', [EscrowTransactionController::class, 'store'])
+    ->name('escrow.store');
 
+// GET    /api/v1/escrow-transactions/{escrowTransaction}
+Route::get('/{escrowTransaction}', [EscrowTransactionController::class, 'show'])
+    ->name('escrow.show');
 
+// PUT    /api/v1/escrow-transactions/{escrowTransaction}
+Route::put('/{escrowTransaction}', [EscrowTransactionController::class, 'update'])
+    ->name('escrow.update');
+
+// DELETE /api/v1/escrow-transactions/{escrowTransaction}
+Route::delete('/{escrowTransaction}', [EscrowTransactionController::class, 'destroy'])
+    ->name('escrow.destroy');
+
+// -----------------------------------------------------------------
+// STATUS TRANSITION ACTIONS
+// -----------------------------------------------------------------
+
+// POST /api/v1/escrow-transactions/{escrowTransaction}/hold
+// Called after payment gateway confirms funds received.
+// Moves: pending → held
+Route::post('/{escrowTransaction}/hold', [EscrowTransactionController::class, 'hold'])
+    ->name('escrow.hold');
+
+// POST /api/v1/escrow-transactions/{escrowTransaction}/release
+// Body (OTP trigger only): { "otp": "123456" }
+// Moves: held → released
+Route::post('/{escrowTransaction}/release', [EscrowTransactionController::class, 'release'])
+    ->name('escrow.release');
+
+// POST /api/v1/escrow-transactions/{escrowTransaction}/refund
+// Body (optional): { "reason": "..." }
+// Moves: held → refunded
+Route::post('/{escrowTransaction}/refund', [EscrowTransactionController::class, 'refund'])
+    ->name('escrow.refund');
+
+// POST /api/v1/escrow-transactions/{escrowTransaction}/dispute
+// Body: { "reason": "..." }
+// Moves: held → disputed
+Route::post('/{escrowTransaction}/dispute', [EscrowTransactionController::class, 'dispute'])
+    ->name('escrow.dispute');

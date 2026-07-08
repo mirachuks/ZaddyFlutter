@@ -13,17 +13,21 @@ return new class extends Migration
     {
         Schema::create('jobs', function (Blueprint $table) {
             $table->id();
-            $table->bigInteger('user_profile_id')->unsigned();
-            $table->string('title');
+            $table->unsignedBigInteger('user_id');
+            $table->string('title')->nullable();
             $table->text('description')->nullable();
-            $table->string('pickup_address');
-            $table->string('pickup_lat')->nullable();
-            $table->string('pickup_lng')->nullable();
-            $table->string('dropoff_address');
+            $table->string('pickup_address')->nullable();
+            $table->decimal('pickup_lat', 10, 7)->nullable();
+            $table->decimal('pickup_lng', 10, 7)->nullable();
+            $table->string('dropoff_address')->nullable();
+            $table->decimal('dropoff_lat', 10, 7)->nullable();
+            $table->decimal('dropoff_lng', 10, 7)->nullable();
             $table->string('mobility_type_needed')->nullable();
-            $table->string('price')->nullable();
-            $table->string('price_type')->default('fixed');//fixed, negotiable,
-            $table->string('status')->nullable(); //open, matched, in_progress, completed, cancelled
+            $table->decimal('price', 10, 2)->nullable();
+            $table->decimal('platform_charge', 10, 2)->nullable();
+            $table->decimal('total_price', 10, 2)->nullable();
+            $table->string('price_type')->default('fixed');
+            $table->string('status')->default('open');
             $table->timestamp('posted_at')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->timestamp('delivered_at')->nullable();

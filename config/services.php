@@ -35,4 +35,15 @@ return [
         ],
     ],
 
+    'squadco' => [
+        'api_key' => env('SQUADCO_API_KEY'),
+        'public_key' => env('SQUADCO_PUBLIC_KEY'),
+        'base_url' => env('SQUADCO_BASE_URL'),
+        // When true, withdrawal requests attempt immediate payout via Squadco
+        'auto_approve_withdrawals' => env('SQUADCO_AUTO_APPROVE', false),
+        'webhook_secret' => env('SQUADCO_WEBHOOK_SECRET', null),
+        'request_retries' => env('SQUADCO_REQUEST_RETRIES', 3),
+        'request_retry_delay_ms' => env('SQUADCO_REQUEST_RETRY_DELAY_MS', 200),
+    ],
+
 ];

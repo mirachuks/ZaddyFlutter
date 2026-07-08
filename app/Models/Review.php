@@ -8,12 +8,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Review extends Model
 {
-    
+
     use HasFactory;
 
     protected $fillable = [
         'user_id',
         'rider_profile_id',
+        'job_id',
         'review',
         'score',
     ];
@@ -21,7 +22,7 @@ class Review extends Model
     protected $casts = [
         'score'           => 'integer',
         'user_id'         => 'integer',
-        'rider_profile_id'=> 'integer',
+        'rider_profile_id' => 'integer',
     ];
 
     // ── Relationships ─────────────────────────────────────────────────────────

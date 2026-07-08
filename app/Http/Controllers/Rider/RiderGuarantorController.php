@@ -7,14 +7,13 @@ use Illuminate\Http\Request;
 use App\Models\Guarantor;
 use App\Models\RiderProfile;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
 class RiderGuarantorController extends Controller
 {
-    / =========================================================================
+    // =========================================================================
     // INDEX — List all guarantors (admin)
     // GET /api/guarantors
     // Optional filters: ?state=Lagos&rider_profile_id=5
@@ -35,7 +34,7 @@ class RiderGuarantorController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('mobile_no', 'like', "%{$search}%");
+                    ->orWhere('mobile_no', 'like', "%{$search}%");
             });
         }
 
@@ -66,10 +65,23 @@ class RiderGuarantorController extends Controller
             'name'      => ['required', 'string', 'max:255'],
             'state'     => ['required', 'string', 'max:100'],
             'address'   => ['required', 'string', 'max:500'],
-            'mobile_no' => ['required', 'string', 'max:20',
-                            Rule::unique('guarantors', 'mobile_no')],
-            'nin'       => ['required', 'string', 'max:11',
-                            Rule::unique('guarantors', 'nin')],
+            'mobile_no' => [
+                'required',
+                'string',
+                'digits:11',
+                Rule::unique('guarantors', 'mobile_no')
+            ],
+            'nin'       => [
+                'required',
+                'string',
+                'digits:11',
+                Rule::unique('guarantors', 'nin')
+            ],
+            'email'     => ['nullable', 'email', 'max:255'],
+            'id_type'   => ['required', 'string', 'max:100'],
+            'relationship' => ['nullable', 'string', 'max:255'],
+            'nin_image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
+            'id_image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
             'image'     => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
         ]);
 
@@ -82,7 +94,17 @@ class RiderGuarantorController extends Controller
 
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')
-                                     ->store('guarantors', 'public');
+                ->store('guarantors', 'public');
+        }
+
+        if ($request->hasFile('nin_image')) {
+            $data['nin_image'] = $request->file('nin_image')
+                ->store('guarantor_documents', 'public');
+        }
+
+        if ($request->hasFile('id_image')) {
+            $data['id_image'] = $request->file('id_image')
+                ->store('guarantor_documents', 'public');
         }
 
         $guarantor = Guarantor::create($data);
@@ -131,12 +153,15 @@ class RiderGuarantorController extends Controller
             'name'      => ['sometimes', 'string', 'max:255'],
             'state'     => ['sometimes', 'string', 'max:100'],
             'address'   => ['sometimes', 'string', 'max:500'],
-            'mobile_no' => ['sometimes', 'string', 'max:20',
-                            Rule::unique('guarantors', 'mobile_no')
-                                ->ignore($guarantor->id)],
-            'nin'       => ['sometimes', 'string', 'max:11',
-                            Rule::unique('guarantors', 'nin')
-                                ->ignore($guarantor->id)],
+            'mobile_no' => [
+                'sometimes',
+                'string',
+                'max:20',
+                Rule::unique('guarantors', 'mobile_no')
+                    ->ignore($guarantor->id)
+            ],
+            'nin'       => ['sometimes', 'prohibited'],
+
             'image'     => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
         ]);
 
@@ -151,7 +176,7 @@ class RiderGuarantorController extends Controller
                 Storage::disk('public')->delete($guarantor->image);
             }
             $data['image'] = $request->file('image')
-                                     ->store('guarantors', 'public');
+                ->store('guarantors', 'public');
         }
 
         $guarantor->update($data);
@@ -192,5 +217,4 @@ class RiderGuarantorController extends Controller
             'errors'  => $errors,
         ], 422);
     }
-
 }

@@ -15,10 +15,15 @@ return new class extends Migration
             $table->id();
             $table->bigInteger('rider_profile_id')->unsigned();
             $table->string('name');
-            $table->string('state');
-            $table->string('address');
+            $table->string('state')->nullable();
+            $table->string('address')->nullable();
             $table->string('mobile_no');
             $table->string('nin');
+            $table->string('email')->nullable();
+            $table->string('id_type')->nullable();
+            $table->string('relationship')->nullable();
+            $table->string('nin_image')->nullable();
+            $table->string('id_image')->nullable();
             $table->string('image')->nullable();
             $table->timestamps();
         });

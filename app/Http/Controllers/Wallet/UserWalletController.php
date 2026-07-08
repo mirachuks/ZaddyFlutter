@@ -4,6 +4,10 @@ namespace App\Http\Controllers\Wallet;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use App\Models\AppNotification;
+use App\Models\Job;
+use App\Models\JobApplication;
 use App\Models\UserWallet;
 use App\Models\WalletTransaction;
 use DB;
@@ -11,23 +15,83 @@ use DB;
 class UserWalletController extends Controller
 {
     public static $minimum_balance = 0;
+
+    /**
+     * Ensure a wallet exists for the user and return it.
+     */
+    public static function ensureWallet(int $user_id): UserWallet
+    {
+        $wallet = UserWallet::where('user_id', $user_id)->first();
+
+        if (! $wallet) {
+            self::save($user_id);
+            $wallet = UserWallet::where('user_id', $user_id)->first();
+        }
+
+        return $wallet;
+    }
+
+    /**
+     * MY WALLET — authenticated user's own wallet balance.
+     * GET /api/wallet/me
+     */
+    public function myWallet(Request $request): JsonResponse
+    {
+        $wallet = self::ensureWallet($request->user()->id);
+
+        if (! $wallet) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Wallet not found for this account.',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => $wallet,
+        ]);
+    }
+
+    /**
+     * MY TRANSACTIONS — authenticated user's wallet transaction history.
+     * GET /api/wallet/transactions
+     */
+    public function myTransactions(Request $request): JsonResponse
+    {
+        $perPage = min((int) $request->get('per_page', 15), 100);
+
+        $transactions = WalletTransaction::where('user_id', $request->user()->id)
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $transactions,
+        ]);
+    }
     /**
      * saves the data to  the db
      * this is the initialization process
      * of a user
      * @param $data
      */
-    public static function save($user_id){
-        //$user = User::where('id', $user_id)->first();
-        DB::transaction(function() use ($user_id){
-            $value = 0;
-               $save = new UserWallet;
-                $save->user_id = $user_id;
-               $save->wallet_no = self::getWalletNo();
-                $save->balance = $value;
-                $save->save();
+    public static function save($user_id)
+    {
+        $existing = UserWallet::where('user_id', $user_id)->first();
+        if ($existing) {
+            return $existing->id;
+        }
 
+        DB::transaction(function () use ($user_id) {
+            $value = 0;
+            $save = new UserWallet;
+            $save->user_id = $user_id;
+            $save->wallet_no = self::getWalletNo();
+            $save->balance = $value;
+            $save->save();
         });
+
+        return UserWallet::where('user_id', $user_id)->first()->id;
     }
 
     /**
@@ -35,16 +99,14 @@ class UserWalletController extends Controller
      * for every user
      *
      */
-    public static function getWalletNo(){
-        $walletno = mt_rand(1000000000, 9999999999);
+    public static function getWalletNo()
+    {
+        do {
+            $walletno = mt_rand(1000000000, 9999999999);
+            $query = UserWallet::where('wallet_no', $walletno)->first();
+        } while ($query !== null);
 
-        $query = UserWallet::where('wallet_no', '!=', $walletno)->first();
-        while($query = true){
-
-            return $walletno;
-
-        }
-
+        return $walletno;
     }
 
     /**
@@ -53,29 +115,40 @@ class UserWalletController extends Controller
      * @param $request
      */
 
-    public static function credit($request){
+    public static function credit($request)
+    {
         $data = [
             'user_id' => $request['user_id'],
             'amount' => $request['amount'],
             'transaction_type' => 'credit',
             'purpose' => $request['purpose'],
-            'comment' => 'Your wallet has been credited '.$request['amount'],
+            'comment' => 'Your wallet has been credited ' . $request['amount'],
             'action_id' => $request['user_id'],
             'action' => 'Wallet',
         ];
 
-        $result = DB::transaction(function() use ($request, $data){
+        $result = DB::transaction(function () use ($request, $data) {
             $credit = UserWallet::where('user_id', $request['user_id'])->with(['user'])->lockForUpdate()->first();
             $credit->balance = $credit->balance + $request['amount'];
             $credit->save();
             // NewNotificationController::save($data);
-           return WalletTransaction::save($data);
-           // Mailer::creditMail($credit->user->email, $request['amount'], $credit->balance, $request['purpose']);
+            return WalletTransactionController::save($data);
+            // Mailer::creditMail($credit->user->email, $request['amount'], $credit->balance, $request['purpose']);
             //return $credit;
 
-               });
-          return $result;
+        });
 
+        AppNotification::create([
+            'user_id' => $request['user_id'],
+            'type' => 'wallet_credited',
+            'payload' => [
+                'title' => 'Wallet Credited',
+                'body' => "Your wallet was credited {$request['amount']} for {$request['purpose']}.",
+            ],
+            'is_read' => false,
+        ]);
+
+        return $result;
     }
 
     /**
@@ -83,17 +156,18 @@ class UserWalletController extends Controller
      * @param $request
      *
      */
-    public static function makeCredit(Request $request){
-       $credit = self::credit($request);
-        if($credit){
-           // return $credit;
+    public static function makeCredit(Request $request)
+    {
+        $credit = self::credit($request);
+        if ($credit) {
+            // return $credit;
             // Mailer::creditMail($credit->user->email, $request['amount'], $credit->balance);
 
             return response()->json([
                 'status' => 'success',
-                'message' => $request['amount'].' credited to your wallet successfully',
+                'message' => $request['amount'] . ' credited to your wallet successfully',
             ]);
-        }else{
+        } else {
             return response()->json([
                 'status' => 'success',
                 'message' => 'Something went wrong, your wallet could not be credited. Please try again',
@@ -102,38 +176,87 @@ class UserWalletController extends Controller
     }
 
     /**
+     * Top up authenticated user's wallet.
+     * POST /api/wallet/topup
+     */
+    public function topUpWallet(Request $request): JsonResponse
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:1',
+        ]);
+
+        $request->merge([
+            'user_id' => $request->user()->id,
+            'purpose' => 'topup',
+        ]);
+
+        return self::makeCredit($request);
+    }
+
+    public function debitWallet(Request $request): JsonResponse
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'purpose' => 'sometimes|string|max:255',
+            'job_id' => ['sometimes', 'nullable', 'integer', 'exists:jobs,id'],
+        ]);
+
+        $request->merge([
+            'user_id' => $request->user()->id,
+            'purpose' => $request->input('purpose', 'job_payment'),
+            'job_id' => $request->input('job_id'),
+        ]);
+
+        return self::makeDebit($request);
+    }
+
+    /**
      * debit a user
      *
      * @param $request
      */
-    public static function debit($request){
+    public static function debit($request)
+    {
         $data = [
             'user_id' => $request['user_id'],
             'amount' => $request['amount'],
             'transaction_type' => 'debit',
             'purpose' => $request['purpose'],
-            'comment' => 'Your wallet has been debited '.$request['amount'].' for '.$request['purpose'],
+            'comment' => 'Your wallet has been debited ' . $request['amount'] . ' for ' . $request['purpose'],
             'action_id' => $request['user_id'],
             'action' => 'Wallet',
         ];
 
-           $result = DB::transaction(function() use ($request, $data){
-                $debit = UserWallet::where('user_id', $request['user_id'])->with(['user'])->lockForUpdate()->first();
-                if($debit->balance >= $request['amount']) {
-                    $debit->balance = $debit->balance - $request['amount'];
-                    $debit->save();
-                    // NewNotificationController::save($data);
-                    return UserTransactionHistoryController::save($data);
-                    //  Mailer::debitMail($debit->user->email, $request['amount'], $debit->balance, $request['purpose']);
-                }else{
-                    return false;
+        $result = DB::transaction(function () use ($request, $data) {
+            $debit = UserWallet::where('user_id', $request['user_id'])->with(['user'])->lockForUpdate()->first();
+            if ($debit->balance >= $request['amount']) {
+                $debit->balance = $debit->balance - $request['amount'];
+                $debit->save();
+                WalletTransactionController::save($data);
+
+                if ($request['purpose'] === 'job_payment' && !empty($request['job_id'])) {
+                    self::handleJobPayment($request['job_id'], (float) $request['amount']);
                 }
 
-            });
+                return true;
+            } else {
+                return false;
+            }
+        });
 
-           return $result;
+        if ($result) {
+            AppNotification::create([
+                'user_id' => $request['user_id'],
+                'type' => 'wallet_debited',
+                'payload' => [
+                    'title' => 'Wallet Debited',
+                    'body' => "Your wallet was debited {$request['amount']} for {$request['purpose']}.",
+                ],
+                'is_read' => false,
+            ]);
+        }
 
-
+        return $result;
     }
 
     /**
@@ -142,32 +265,30 @@ class UserWalletController extends Controller
      * @param $user_id, $amount
      *
      */
-    public static function makeDebit(Request $request){
+    public static function makeDebit(Request $request)
+    {
         $check = self::checkAmt($request['user_id'], $request['amount']);
-        if($check){
+        if ($check) {
             $debit = self::debit($request);
-            if($debit){
-               //return $debit;
+            if ($debit) {
+                //return $debit;
                 return response()->json([
                     'status' => 'success',
-                    'message' => $request['amount'].' debited from your wallet',
+                    'message' => $request['amount'] . ' debited from your wallet',
                 ]);
-            }else{
+            } else {
 
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Something went wrong your wallet could not be debited. Please try again',
                 ]);
-
             }
-        }else{
+        } else {
             return response()->json([
                 'status' => 'error',
                 'message' => 'You don not have sufficient balance in your wallet.'
             ]);
-
         }
-
     }
 
     /**
@@ -177,16 +298,66 @@ class UserWalletController extends Controller
      * @param $user_id, $amount
      *
      */
-    public static function checkAmt($user_id, $amount){
+    public static function checkAmt($user_id, $amount)
+    {
 
-            //$new_amout = 300;
-            $wallet = UserWallet::where('user_id', $user_id)->lockForUpdate()->first();
-            if ($wallet->balance >= $amount) {
-                return true;
-            } else {
-                return false;
+        //$new_amout = 300;
+        $wallet = UserWallet::where('user_id', $user_id)->lockForUpdate()->first();
+        if ($wallet->balance >= $amount) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Process a wallet job payment by crediting the accepted rider and updating job states.
+     *
+     * @param int $jobId
+     * @param float $amount
+     */
+    protected static function handleJobPayment(int $jobId, float $amount)
+    {
+        $job = Job::with('acceptedApplication')->find($jobId);
+        if (! $job) {
+            return;
+        }
+
+        $platformFee = $job->platform_charge ?? $job->order_fee ?? 0;
+        if ($platformFee < 0) {
+            $platformFee = 0;
+        }
+
+        $riderPayout = max(0, round($amount - $platformFee, 2));
+        $riderId = null;
+
+        if ($job->acceptedApplication) {
+            $acceptedApplication = $job->acceptedApplication;
+            $riderId = $acceptedApplication->user_rider_id;
+
+            if ($acceptedApplication->status !== 'in_progress') {
+                $acceptedApplication->update(['status' => 'in_progress']);
             }
+        }
 
+        if ($job->status !== 'in_progress' && ! in_array($job->status, ['completed', 'delivered', 'cancelled'])) {
+            $job->status = 'in_progress';
+        }
+
+        if ($job->payment_status !== 'paid') {
+            $job->payment_status = 'paid';
+        }
+
+        $job->save();
+
+        if ($riderId && $riderPayout > 0) {
+            self::ensureWallet($riderId);
+            self::credit([
+                'user_id' => $riderId,
+                'amount' => $riderPayout,
+                'purpose' => 'job_earnings',
+            ]);
+        }
     }
 
     /**
@@ -195,12 +366,13 @@ class UserWalletController extends Controller
      * @param $user_id, $amount
      *
      */
-    public static function get($id = null){
-        if(!empty($id)){
+    public static function get($id = null)
+    {
+        if (!empty($id)) {
             return $data = UserWallet::where('id', $id)->with(['user'])->first();
-        }elseif(empty($id)){
+        } elseif (empty($id)) {
             return $data = UserWallet::where('user_id', '!=', null)->with(['user'])->paginate(20);
-        }else{
+        } else {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Something went wrong, data could not be retrieved'
@@ -214,11 +386,12 @@ class UserWalletController extends Controller
      * @param $user_id
      *
      */
-    public static function balance($user_id){
-        if(!empty($user_id)){
+    public static function balance($user_id)
+    {
+        if (!empty($user_id)) {
             $balance = UserWallet::where('user_id', $user_id)->lockForUpdate()->first();
             return $balance->balance;
-        }elseif(empty($user_id)){
+        } elseif (empty($user_id)) {
 
             return response()->json([
                 'status' => 'error',
@@ -234,15 +407,16 @@ class UserWalletController extends Controller
      * @param $sender_user_id, $receiver_wallet_no
      *
      */
-    public static function confirmUserWalletNo($receiver_wallet_no){
+    public static function confirmUserWalletNo($receiver_wallet_no)
+    {
         $receiver_wallet_details = UserWallet::where('wallet_no', $receiver_wallet_no)->with('user')->first();
-        if(!empty($receiver_wallet_details->user->id)){
+        if (!empty($receiver_wallet_details->user->id)) {
             return response()->json([
                 'status' => 'success',
                 'message' => 'Wallet ID is correct',
                 'data' => $receiver_wallet_details,
             ]);
-        }else{
+        } else {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Invalid wallet ID. Please correct ID and try again',
@@ -257,27 +431,30 @@ class UserWalletController extends Controller
      * @param $sender_user_id, $receiver_wallet_no, $amount
      * @return $response
      */
-    public static function transferToAnotherUserWalletId(Request $request){
-        $validation = Validator::make($request->all(),
+    public static function transferToAnotherUserWalletId(Request $request)
+    {
+        $validation = Validator::make(
+            $request->all(),
             [
                 "sender_user_id" => "required",
-                "receiver_wallet_no" =>"required",
-                "amount"=>"required"
-            ]);
+                "receiver_wallet_no" => "required",
+                "amount" => "required"
+            ]
+        );
 
-        if($validation->fails()){
+        if ($validation->fails()) {
             return response()->json([
                 'status' => 403,
                 'message' => $validation->errors(),
             ]);
         }
-        if(self::checkAmt($request['sender_user_id'], $request['amount'])){
-            try{
+        if (self::checkAmt($request['sender_user_id'], $request['amount'])) {
+            try {
                 $credit = UserWallet::where('wallet_no', $request['receiver_wallet_no'])->with(['user'])->lockForUpdate()->first();
                 $debit = UserWallet::where('user_id', $request['sender_user_id'])->with(['user'])->lockForUpdate()->first();
-                DB::transaction(function() use ($request, $credit, $debit){
+                DB::transaction(function () use ($request, $credit, $debit) {
 
-                    if($debit->balance >= $request['amount'] && is_int($request['amount'])){
+                    if ($debit->balance >= $request['amount'] && is_int($request['amount'])) {
                         $debit->balance = $debit->balance - $request['amount'];
                         $debit->save();
                         $debit_transaction_record = [
@@ -287,7 +464,7 @@ class UserWalletController extends Controller
                             'purpose' => 'transfer',
                             'receiver_id' => $credit->user_id,
                         ];
-                        UserTransactionHistoryController::save($debit_transaction_record);
+                        WalletTransactionController::save($debit_transaction_record);
                     }
                     // $credit = Wallet::where('wallet_no', $request['receiver_wallet_no'])->with(['user'])->first();
                     $credit->balance = $credit->balance + $request['amount'];
@@ -298,31 +475,46 @@ class UserWalletController extends Controller
                         'transaction_type' => 'credit',
                         'purpose' => 'transfer',
                     ];
-                    UserTransactionHistoryController::save($credit_transaction_record);
+                    WalletTransactionController::save($credit_transaction_record);
                 });
+
+                AppNotification::create([
+                    'user_id' => $request['sender_user_id'],
+                    'type' => 'transfer_sent',
+                    'payload' => [
+                        'title' => 'Transfer Sent',
+                        'body' => "You sent {$request['amount']} to {$credit->user->first_name}.",
+                    ],
+                    'is_read' => false,
+                ]);
+
+                AppNotification::create([
+                    'user_id' => $credit->user_id,
+                    'type' => 'transfer_received',
+                    'payload' => [
+                        'title' => 'Transfer Received',
+                        'body' => "You received {$request['amount']}.",
+                    ],
+                    'is_read' => false,
+                ]);
 
                 return response()->json([
                     'status' => 'success',
-                    'message' => $request['amount'].' transfered successfully to '.$credit->user->first_name,
+                    'message' => $request['amount'] . ' transfered successfully to ' . $credit->user->first_name,
                 ]);
-            }catch(Exception $e){
+            } catch (Exception $e) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Something went wrong transfer could not be completed successfully.
                  Please try again',
                 ]);
-
             }
-        }else{
+        } else {
             return response()->json([
                 'status' => 'error',
                 'message' => 'You do not have sufficient balance in your wallet to carry out this transaction',
             ]);
-
         }
-
-
-
     }
 
     /**
@@ -332,14 +524,15 @@ class UserWalletController extends Controller
      * @param $sender_user_id, $receiver_wallet_no, $amount
      * @return $response
      */
-    public static function transferFromUserToOrganizationWalletId(Request $request){
-        if(self::checkAmt($request['sender_user_id'], $request['amount'])){
-            try{
+    public static function transferFromUserToOrganizationWalletId(Request $request)
+    {
+        if (self::checkAmt($request['sender_user_id'], $request['amount'])) {
+            try {
                 $credit = OrganizationWallet::where('wallet_no', $request['receiver_wallet_no'])->with(['user'])->lockForUpdate()->first();
                 $debit = UserWallet::where('user_id', $request['sender_user_id'])->with(['user'])->lockForUpdate()->first();
-                DB::transaction(function() use ($request, $credit, $debit){
+                DB::transaction(function () use ($request, $credit, $debit) {
 
-                    if($debit->balance >= $request['amount'] && is_int($request['amount'])){
+                    if ($debit->balance >= $request['amount'] && is_int($request['amount'])) {
                         $debit->balance = $debit->balance - $request['amount'];
                         $debit->save();
                         $debit_transaction_record = [
@@ -349,7 +542,7 @@ class UserWalletController extends Controller
                             'purpose' => 'transfer',
                             'receiver_id' => $credit->user_id,
                         ];
-                        UserTransactionHistoryController::save($debit_transaction_record);
+                        WalletTransactionController::save($debit_transaction_record);
                     }
                     // $credit = Wallet::where('wallet_no', $request['receiver_wallet_no'])->with(['user'])->first();
                     $credit->balance = $credit->balance + $request['amount'];
@@ -365,26 +558,21 @@ class UserWalletController extends Controller
 
                 return response()->json([
                     'status' => 'success',
-                    'message' => $request['amount'].' transfered successfully to '.$credit->user->name,
+                    'message' => $request['amount'] . ' transfered successfully to ' . $credit->user->name,
                 ]);
-            }catch(Exception $e){
+            } catch (Exception $e) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Something went wrong transfer could not be completed successfully.
                  Please try again',
                 ]);
-
             }
-        }else{
+        } else {
             return response()->json([
                 'status' => 'error',
                 'message' => 'You do not have sufficient balance in your wallet to carry out this transaction',
             ]);
-
         }
-
-
-
     }
 
     /**
@@ -394,7 +582,8 @@ class UserWalletController extends Controller
      *
      *
      */
-    public static function getTotalCurrentBalnce(){
+    public static function getTotalCurrentBalnce()
+    {
         return UserWallet::where('id', '!=', NULL)->lockForUpdate()->sum('balance');
     }
 
@@ -405,17 +594,16 @@ class UserWalletController extends Controller
      * cash out
      *
      */
-    public static function checkIfCanCashOut($user_id){
-        $balance = Wallet::where('user_id', $user_id)->first();
-        if($balance->balance >= self::$minimum_balance){
+    public static function checkIfCanCashOut($user_id)
+    {
+        $balance = UserWallet::where('user_id', $user_id)->first();
+        if ($balance->balance >= self::$minimum_balance) {
             return true;
-        }else{
+        } else {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Sorry you can not withdraw until you have up to '.self::$minimum_balance.' in your wallet',
+                'message' => 'Sorry you can not withdraw until you have up to ' . self::$minimum_balance . ' in your wallet',
             ]);
         }
-
-   }
-
+    }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Job;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\AppNotification;
 use App\Models\Job;
 use App\Models\JobApplication;
 use Illuminate\Http\JsonResponse;
@@ -12,8 +13,8 @@ use Illuminate\Validation\Rule;
 
 class JobApplicationController extends Controller
 {
-    
-     // =========================================================================
+
+    // =========================================================================
     // INDEX — List all applications (admin)
     // GET /api/job-applications
     // Filters: ?status=pending&job_id=3&user_rider_id=5
@@ -21,8 +22,8 @@ class JobApplicationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = JobApplication::with([
-            'job:id,title,status,budget',
-            'userRider:id,name,email',
+            'job:id,title,status,price,user_id',
+            'userRider:id,first_name,last_name,email',
         ]);
 
         if ($request->filled('status')) {
@@ -62,8 +63,8 @@ class JobApplicationController extends Controller
 
         // Rider cannot apply to the same job twice
         $alreadyApplied = JobApplication::where('job_id', $job->id)
-                                        ->where('user_rider_id', $request->user()->id)
-                                        ->exists();
+            ->where('user_rider_id', $request->user()->id)
+            ->exists();
 
         if ($alreadyApplied) {
             return response()->json([
@@ -97,11 +98,21 @@ class JobApplicationController extends Controller
             'status'        => 'pending',
         ]);
 
+        AppNotification::create([
+            'user_id' => $job->user_id,
+            'type' => 'application_received',
+            'payload' => [
+                'title' => 'New Application',
+                'body' => "A rider applied for your job \"{$job->title}\".",
+            ],
+            'is_read' => false,
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => 'Application submitted successfully.',
             'data'    => $application->load([
-                'job:id,title,status,budget',
+                'job:id,title,status,price,user_id',
                 'userRider:id,name,email',
             ]),
         ], 201);
@@ -113,7 +124,14 @@ class JobApplicationController extends Controller
     // =========================================================================
     public function show(Request $request, JobApplication $jobApplication): JsonResponse
     {
-        $user    = $request->user();
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authentication required.',
+            ], 401);
+        }
+
         $isAdmin = $user->hasRole('admin');
         $isOwner = $jobApplication->user_rider_id === $user->id;
 
@@ -130,8 +148,8 @@ class JobApplicationController extends Controller
         return response()->json([
             'success' => true,
             'data'    => $jobApplication->load([
-                'job:id,title,status,budget,user_id',
-                'userRider:id,name,email',
+                'job:id,title,status,price,user_id',
+                'userRider:id,first_name,last_name,email',
             ]),
         ]);
     }
@@ -154,7 +172,7 @@ class JobApplicationController extends Controller
         }
 
         $query = $job->applications()
-                     ->with('userRider:id,name,email');
+            ->with('userRider:id,first_name,last_name,email');
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -183,8 +201,15 @@ class JobApplicationController extends Controller
     // =========================================================================
     public function myApplications(Request $request): JsonResponse
     {
-        $query = JobApplication::with('job:id,title,status,budget')
-                               ->where('user_rider_id', $request->user()->id);
+        if (!$request->user()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authentication required.',
+            ], 401);
+        }
+
+        $query = JobApplication::with('job:id,title,status,price,user_id', 'userRider:id,first_name,last_name,email')
+            ->where('user_rider_id', $request->user()->id);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -196,6 +221,36 @@ class JobApplicationController extends Controller
         return response()->json([
             'success' => true,
             'data'    => $applications,
+        ]);
+    }
+
+    // =========================================================================
+    // ACTIVE APPLICATION — Rider's currently active application
+    // GET /api/job-applications/mine/active
+    // =========================================================================
+    public function myActiveApplication(Request $request): JsonResponse
+    {
+        if (!$request->user()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authentication required.',
+            ], 401);
+        }
+
+        $query = JobApplication::with('job:id,title,status,price,user_id', 'userRider:id,first_name,last_name,email')
+            ->where('user_rider_id', $request->user()->id)
+            ->whereIn('status', ['accepted', 'matched', 'in_progress'])
+            ->latest();
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $application = $query->first();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $application,
         ]);
     }
 
@@ -236,8 +291,8 @@ class JobApplicationController extends Controller
             'success' => true,
             'message' => 'Application updated successfully.',
             'data'    => $jobApplication->fresh([
-                'job:id,title,status,budget',
-                'userRider:id,name,email',
+                'job:id,title,status,price,user_id',
+                'userRider:id,first_name,last_name,email',
             ]),
         ]);
     }
@@ -248,7 +303,14 @@ class JobApplicationController extends Controller
     // =========================================================================
     public function changeStatus(Request $request, JobApplication $jobApplication): JsonResponse
     {
-        $user    = $request->user();
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authentication required.',
+            ], 401);
+        }
+
         $isAdmin = $user->hasRole('admin');
         $isJobPoster = $jobApplication->job->user_id === $user->id;
 
@@ -270,9 +332,9 @@ class JobApplicationController extends Controller
         // Accepting one application auto-rejects all others on the same job
         if ($request->status === 'accepted') {
             $alreadyAccepted = JobApplication::where('job_id', $jobApplication->job_id)
-                                             ->where('status', 'accepted')
-                                             ->where('id', '!=', $jobApplication->id)
-                                             ->exists();
+                ->where('status', 'accepted')
+                ->where('id', '!=', $jobApplication->id)
+                ->exists();
 
             if ($alreadyAccepted) {
                 return response()->json([
@@ -283,13 +345,34 @@ class JobApplicationController extends Controller
 
             // Reject all other pending applications for this job
             JobApplication::where('job_id', $jobApplication->job_id)
-                          ->where('id', '!=', $jobApplication->id)
-                          ->where('status', 'pending')
-                          ->update(['status' => 'rejected']);
+                ->where('id', '!=', $jobApplication->id)
+                ->where('status', 'pending')
+                ->update(['status' => 'rejected']);
         }
 
         $oldStatus = $jobApplication->status;
         $jobApplication->update(['status' => $request->status]);
+
+        if ($request->status === 'accepted') {
+            $job = $jobApplication->job;
+            if ($job && $job->status !== 'accepted') {
+                $job->update(['status' => 'accepted']);
+            }
+        }
+
+        if (in_array($request->status, ['accepted', 'rejected'])) {
+            AppNotification::create([
+                'user_id' => $jobApplication->user_rider_id,
+                'type' => $request->status === 'accepted' ? 'application_accepted' : 'application_rejected',
+                'payload' => [
+                    'title' => $request->status === 'accepted' ? 'Application Accepted' : 'Application Rejected',
+                    'body' => $request->status === 'accepted'
+                        ? "Your application for \"{$jobApplication->job->title}\" was accepted."
+                        : "Your application for \"{$jobApplication->job->title}\" was rejected.",
+                ],
+                'is_read' => false,
+            ]);
+        }
 
         return response()->json([
             'success' => true,
@@ -304,7 +387,15 @@ class JobApplicationController extends Controller
     // =========================================================================
     public function withdraw(Request $request, JobApplication $jobApplication): JsonResponse
     {
-        if ($jobApplication->user_rider_id !== $request->user()->id) {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authentication required.',
+            ], 401);
+        }
+
+        if ($jobApplication->user_rider_id !== $user->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'You can only withdraw your own applications.',
@@ -319,6 +410,16 @@ class JobApplicationController extends Controller
         }
 
         $jobApplication->update(['status' => 'withdrawn']);
+
+        AppNotification::create([
+            'user_id' => $jobApplication->job->user_id,
+            'type' => 'application_withdrawn',
+            'payload' => [
+                'title' => 'Application Withdrawn',
+                'body' => "A rider withdrew their application for \"{$jobApplication->job->title}\".",
+            ],
+            'is_read' => false,
+        ]);
 
         return response()->json([
             'success' => true,
@@ -352,6 +453,4 @@ class JobApplicationController extends Controller
             'errors'  => $errors,
         ], 422);
     }
-
-
 }

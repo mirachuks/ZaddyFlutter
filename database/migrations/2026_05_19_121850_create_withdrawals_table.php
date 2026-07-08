@@ -13,7 +13,15 @@ return new class extends Migration
     {
         Schema::create('withdrawals', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('user_id');
+            $table->decimal('amount', 13, 2);
+            $table->string('status')->default('pending');
+            $table->string('admin_note')->nullable();
+            $table->string('reference')->nullable();
+            $table->json('provider_response')->nullable();
             $table->timestamps();
+
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
 

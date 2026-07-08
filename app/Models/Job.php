@@ -10,84 +10,110 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Job extends Model
 {
-     use HasFactory;
- 
+    use HasFactory;
+
     protected $fillable = [
-        'user_profile_id',
+        'user_id',
         'title',
         'description',
         'pickup_address',
         'pickup_lat',
         'pickup_lng',
+        'dropoff_lat',
+        'dropoff_lng',
         'dropoff_address',
         'mobility_type_needed',
         'price',
+        'platform_charge',
+        'order_fee',
+        'total_price',
         'price_type',
         'status',
+        'payment_status',
         'posted_at',
         'expires_at',
         'delivered_at',
     ];
- 
+
     protected $casts = [
-        'price'        => 'decimal:2',
-        'pickup_lat'   => 'float',
-        'pickup_lng'   => 'float',
-        'posted_at'    => 'datetime',
-        'expires_at'   => 'datetime',
-        'delivered_at' => 'datetime',
+        'price'           => 'decimal:2',
+        'platform_charge' => 'decimal:2',
+        'order_fee'       => 'decimal:2',
+        'total_price'     => 'decimal:2',
+        'pickup_lat'      => 'float',
+        'pickup_lng'      => 'float',
+        'posted_at'       => 'datetime',
+        'expires_at'      => 'datetime',
+        'delivered_at'    => 'datetime',
     ];
- 
+
     // ── Relationships ─────────────────────────────────────────────────────────
- 
-    public function userProfile(): BelongsTo
+
+    public function user(): BelongsTo
     {
-        return $this->belongsTo(UserProfile::class);
+        return $this->belongsTo(User::class);
     }
- 
+
     public function applications(): HasMany
     {
         return $this->hasMany(JobApplication::class);
     }
- 
+
+
+    public function jobItem(): HasMany
+    {
+        return $this->hasMany(JobItem::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->jobItem();
+    }
+
     public function acceptedApplication(): HasOne
     {
         return $this->hasOne(JobApplication::class)
-                    ->where('status', 'accepted');
+            ->where('status', 'accepted');
     }
- 
+
+    public function riderApplication(): HasOne
+    {
+        return $this->hasOne(JobApplication::class)
+            ->whereIn('status', ['accepted', 'in_progress', 'delivered']);
+    }
+
     // ── Scopes ────────────────────────────────────────────────────────────────
- 
+
     public function scopeOpen($query)
     {
         return $query->where('status', 'open');
     }
- 
+
     public function scopeActive($query)
     {
         return $query->whereIn('status', ['open', 'matched', 'in_progress']);
     }
- 
+
     public function scopeCompleted($query)
     {
         return $query->where('status', 'completed');
     }
- 
+
     public function scopeNotExpired($query)
     {
         return $query->where(function ($q) {
             $q->whereNull('expires_at')
-              ->orWhere('expires_at', '>', now());
+                ->orWhere('expires_at', '>', now());
         });
     }
- 
+
     public function scopeByMobilityType($query, string $type)
     {
         return $query->where('mobility_type_needed', $type);
     }
  
     // ── Accessors ─────────────────────────────────────────────────────────────
- 
+
     /**
      * Returns true if the job is past its expiry date.
      */
@@ -95,7 +121,7 @@ class Job extends Model
     {
         return $this->expires_at && $this->expires_at->isPast();
     }
- 
+
     /**
      * Returns true if the job is accepting applications.
      */
@@ -103,5 +129,4 @@ class Job extends Model
     {
         return $this->status === 'open' && ! $this->is_expired;
     }
-
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Review;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\Job;
 use App\Models\Review;
 use App\Models\RiderProfile;
 use Illuminate\Http\JsonResponse;
@@ -12,7 +13,7 @@ use Illuminate\Validation\Rule;
 
 class ReviewController extends Controller
 {
-     // =========================================================================
+    // =========================================================================
     // INDEX — List all reviews (admin)
     // GET /api/reviews
     // Filters: ?rider_profile_id=3&user_id=5&min_score=3&max_score=5
@@ -20,8 +21,8 @@ class ReviewController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Review::with([
-            'user:id,name,email',
-            'riderProfile:id,legal_name,mobile_number',
+            'user:id,first_name,last_name,mobile_number,email',
+            'riderProfile:id,first_name,last_name,mobile_number',
         ]);
 
         if ($request->filled('rider_profile_id')) {
@@ -61,8 +62,8 @@ class ReviewController extends Controller
     {
         // A user can only review a rider once
         $alreadyReviewed = Review::where('user_id', $request->user()->id)
-                                 ->where('rider_profile_id', $riderProfile->id)
-                                 ->exists();
+            ->where('rider_profile_id', $riderProfile->id)
+            ->exists();
 
         if ($alreadyReviewed) {
             return response()->json([
@@ -80,7 +81,7 @@ class ReviewController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'review' => ['required', 'string', 'min:10', 'max:1000'],
+            'review' => ['nullable', 'string', 'min:10', 'max:1000'],
             'score'  => ['required', 'integer', 'min:1', 'max:5'],
         ]);
 
@@ -103,7 +104,79 @@ class ReviewController extends Controller
             'message' => 'Review submitted successfully.',
             'data'    => $review->load([
                 'user:id,name,email',
-                'riderProfile:id,legal_name',
+                'riderProfile:id,first_name,last_name,mobile_number',
+            ]),
+        ], 201);
+    }
+
+    // =========================================================================
+    // STORE FROM JOB — Submit a review using a job reference
+    // POST /api/reviews
+    // =========================================================================
+    public function storeFromJob(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'job_id' => ['required', 'integer', 'exists:jobs,id'],
+            'score'  => ['required', 'integer', 'min:1', 'max:5'],
+            'review' => ['nullable', 'string', 'min:10', 'max:1000'],
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors());
+        }
+
+        $job = Job::with('riderApplication')->find($request->job_id);
+
+        if (! $job || ! $job->riderApplication) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Job not found or no rider assigned to this job.',
+            ], 404);
+        }
+
+        $riderProfile = RiderProfile::where('user_id', $job->riderApplication->user_rider_id)->first();
+
+        if (! $riderProfile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Rider profile not found for this job.',
+            ], 404);
+        }
+
+        if ($riderProfile->user_id === $request->user()->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot review your own rider profile.',
+            ], 403);
+        }
+
+        $alreadyReviewed = Review::where('user_id', $request->user()->id)
+            ->where('rider_profile_id', $riderProfile->id)
+            ->exists();
+
+        if ($alreadyReviewed) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You have already submitted a review for this rider.',
+            ], 422);
+        }
+
+        $review = Review::create([
+            'user_id'          => $request->user()->id,
+            'rider_profile_id' => $riderProfile->id,
+            'job_id'           => $job->id,
+            'review'           => $request->review,
+            'score'            => $request->score,
+        ]);
+
+        $this->updateRiderReviewRank($riderProfile);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Review submitted successfully.',
+            'data'    => $review->load([
+                'user:id,name,email',
+                'riderProfile:id,first_name,last_name,mobile_number',
             ]),
         ], 201);
     }
@@ -118,7 +191,7 @@ class ReviewController extends Controller
             'success' => true,
             'data'    => $review->load([
                 'user:id,name,email',
-                'riderProfile:id,legal_name,mobile_number',
+                'riderProfile:id,first_name,last_name,mobile_number',
             ]),
         ]);
     }
@@ -130,8 +203,8 @@ class ReviewController extends Controller
     public function byRider(Request $request, RiderProfile $riderProfile): JsonResponse
     {
         $query = $riderProfile->reviews()
-                              ->with('user:id,name,email')
-                              ->latest();
+            ->with('user:id,name,email')
+            ->latest();
 
         if ($request->filled('min_score')) {
             $query->where('score', '>=', $request->min_score);
@@ -165,9 +238,9 @@ class ReviewController extends Controller
     public function myReviews(Request $request): JsonResponse
     {
         $reviews = Review::with('riderProfile:id,legal_name,mobile_number')
-                         ->where('user_id', $request->user()->id)
-                         ->latest()
-                         ->paginate(15);
+            ->where('user_id', $request->user()->id)
+            ->latest()
+            ->paginate(15);
 
         return response()->json([
             'success' => true,
@@ -210,7 +283,7 @@ class ReviewController extends Controller
             'message' => 'Review updated successfully.',
             'data'    => $review->fresh([
                 'user:id,name,email',
-                'riderProfile:id,legal_name',
+                'riderProfile:id,first_name,last_name,mobile_number',
             ]),
         ]);
     }
@@ -255,7 +328,7 @@ class ReviewController extends Controller
     private function updateRiderReviewRank(RiderProfile $riderProfile): void
     {
         $average = Review::where('rider_profile_id', $riderProfile->id)
-                         ->avg('score');
+            ->avg('score');
 
         $riderProfile->update([
             'review_rank' => $average ? round($average, 1) : null,
@@ -270,5 +343,4 @@ class ReviewController extends Controller
             'errors'  => $errors,
         ], 422);
     }
-
 }
