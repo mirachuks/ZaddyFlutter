@@ -262,6 +262,12 @@ Route::get(
 Route::get('reviews/mine', [ReviewController::class, 'myReviews'])
     ->name('reviews.mine');
 
+// Submit a review for a rider using job reference (customers rating riders after job completion)
+// POST /api/reviews
+// Body: { job_id, score, review? }
+Route::middleware('auth:api')->post('reviews', [ReviewController::class, 'storeFromJob'])
+    ->name('reviews.store');
+
 // Submit a review for a rider (one per user per rider)
 // POST /api/rider-profiles/3/reviews
 Route::post(

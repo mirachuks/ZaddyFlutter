@@ -923,6 +923,38 @@ class AdminController extends Controller
         return view('admin.withdrawals', compact('withdrawals', 'search'));
     }
 
+    /**
+     * Display manual payment notifications awaiting admin review
+     */
+    public function manualPayments(Request $request)
+    {
+        $this->ensureAdmin();
+
+        $query = EscrowTransaction::with(['user', 'riderProfile'])
+            ->where('manual_payment_notified', true)
+            ->where('status', EscrowTransaction::STATUS_PENDING);
+        $search = trim((string) $request->input('search', ''));
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('payment_reference', 'like', "%{$search}%")
+                    ->orWhere('status', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($u) use ($search) {
+                        $u->where('first_name', 'like', "%{$search}%")
+                            ->orWhere('last_name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    })
+                    ->orWhere('job_id', $search);
+            });
+        }
+
+        $transactions = $query->orderByDesc('created_at')->paginate(20)->appends($request->only('search'));
+
+        // Blade template expects $pendingPayments
+        $pendingPayments = $transactions;
+
+        return view('admin.manual_payments', compact('pendingPayments', 'search'));
+    }
     public function approveWithdrawal(Request $request, Withdrawal $withdrawal)
     {
         $this->ensureAdmin();

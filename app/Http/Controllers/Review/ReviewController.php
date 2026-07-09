@@ -189,7 +189,7 @@ class ReviewController extends Controller
             'success' => true,
             'message' => 'Review submitted successfully.',
             'data'    => $review->load([
-                'user:id,name,email',
+                'user:id,first_name,last_name,email',
                 'riderProfile:id,first_name,last_name,mobile_number',
             ]),
         ], 201);
@@ -204,7 +204,7 @@ class ReviewController extends Controller
         return response()->json([
             'success' => true,
             'data'    => $review->load([
-                'user:id,name,email',
+                'user:id,first_name,last_name,email',
                 'riderProfile:id,first_name,last_name,mobile_number',
             ]),
         ]);
