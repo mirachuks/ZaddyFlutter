@@ -81,8 +81,9 @@ class ManualPaymentController extends Controller
 
                 $riderPayout = max(0, round($validated['amount'] - $platformFee, 2));
 
-                if ($job->acceptedApplication) {
-                    $riderProfileId = RiderProfile::where('user_id', $job->acceptedApplication->user_rider_id)
+                $riderApplication = $job->riderApplication ?? $job->acceptedApplication;
+                if ($riderApplication) {
+                    $riderProfileId = RiderProfile::where('user_id', $riderApplication->user_rider_id)
                         ->value('id');
                 }
             }
@@ -90,7 +91,7 @@ class ManualPaymentController extends Controller
             $createData = [
                 'user_id' => $user->id,
                 'job_id' => $validated['job_id'] ?? null,
-                'rider_profile_id' => $riderProfileId,
+                'rider_profile_id' => $riderProfileId ?: null,
                 'balance' => $validated['amount'],
                 'platform_fee' => $platformFee,
                 'rider_payout' => $riderPayout,

@@ -556,19 +556,30 @@ class AdminController extends Controller
 
             $job = $transaction->job_id ? Job::find($transaction->job_id) : null;
             $riderId = null;
-            $amountToCredit = $transaction->rider_payout ?? null;
+            $amountToCredit = max(0, ($transaction->balance ?? 0) - ($transaction->platform_fee ?? 0));
+
+            if ($transaction->rider_profile_id) {
+                $riderProfile = RiderProfile::find($transaction->rider_profile_id);
+                $riderId = $riderProfile?->user_id;
+            }
+
+            if (! $riderId && $job) {
+                $riderApplication = $job->riderApplication ?? $job->acceptedApplication;
+                if ($riderApplication) {
+                    $riderId = $riderApplication->user_rider_id;
+                }
+            }
 
             if ($job) {
-                if ($job->acceptedApplication) {
-                    $acceptedApplication = $job->acceptedApplication;
-                    $riderId = $acceptedApplication->user_rider_id;
-
-                    if ($amountToCredit === null) {
-                        $amountToCredit = $transaction->balance - ($transaction->platform_fee ?? 0);
+                $riderApplication = $job->riderApplication ?? $job->acceptedApplication;
+                if ($riderApplication) {
+                    if ($transaction->rider_payout !== $amountToCredit) {
+                        $transaction->rider_payout = $amountToCredit;
+                        $transaction->save();
                     }
 
-                    if ($acceptedApplication->status !== 'in_progress') {
-                        $acceptedApplication->update(['status' => 'in_progress']);
+                    if ($riderApplication->status !== 'in_progress') {
+                        $riderApplication->update(['status' => 'in_progress']);
                     }
 
                     if (! in_array($job->status, ['in_progress', 'completed', 'delivered', 'cancelled'])) {
@@ -644,15 +655,16 @@ class AdminController extends Controller
 
                 $job = $transaction->job_id ? Job::find($transaction->job_id) : null;
                 $riderId = null;
-                $amountToCredit = $transaction->rider_payout ?? null;
+                $amountToCredit = max(0, ($transaction->balance ?? 0) - ($transaction->platform_fee ?? 0));
 
                 if ($job) {
                     if ($job->acceptedApplication) {
                         $acceptedApplication = $job->acceptedApplication;
                         $riderId = $acceptedApplication->user_rider_id;
 
-                        if ($amountToCredit === null) {
-                            $amountToCredit = $transaction->balance - ($transaction->platform_fee ?? 0);
+                        if ($transaction->rider_payout !== $amountToCredit) {
+                            $transaction->rider_payout = $amountToCredit;
+                            $transaction->save();
                         }
 
                         if ($acceptedApplication->status !== 'in_progress') {
