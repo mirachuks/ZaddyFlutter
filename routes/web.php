@@ -32,6 +32,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('rider-wallets', [AdminController::class, 'riderWallets'])->name('rider-wallets');
         Route::get('manual-payments', [AdminController::class, 'manualPayments'])->name('manual-payments');
         Route::post('manual-payments/{transaction}/approve', [AdminController::class, 'approveManualPayment'])->name('manual-payments.approve');
+        Route::get('merge-accounts', [AdminController::class, 'assignRiderForm'])->name('assign-job');
+        Route::post('merge-accounts', [AdminController::class, 'assignRider'])->name('assign-job.post');
         Route::get('orders', [AdminController::class, 'orders'])->name('orders');
         Route::get('reports', [AdminController::class, 'reports'])->name('reports');
         Route::get('kyc', [AdminController::class, 'kyc'])->name('kyc');

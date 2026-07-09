@@ -9,6 +9,7 @@ use App\Models\Review;
 use App\Models\RiderProfile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class ReviewController extends Controller
@@ -169,7 +170,20 @@ class ReviewController extends Controller
             'score'            => $request->score,
         ]);
 
-        $this->updateRiderReviewRank($riderProfile);
+        // Recalculate review rank but do not let failures here cause a 500
+        // response after the review has already been persisted. Log any
+        // exceptions so we can debug post-processing problems without
+        // returning an HTML error page to API clients.
+        try {
+            $this->updateRiderReviewRank($riderProfile);
+        } catch (\Throwable $e) {
+            Log::error('Failed to update rider review rank after storing review', [
+                'job_id' => $job->id,
+                'rider_profile_id' => $riderProfile->id,
+                'review_id' => $review->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'success' => true,

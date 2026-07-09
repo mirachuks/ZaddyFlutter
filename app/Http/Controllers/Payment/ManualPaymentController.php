@@ -11,6 +11,7 @@ use App\Models\RiderProfile;
 use App\Models\User;
 use App\Mail\ManualPaymentNotification;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Schema;
 
 class ManualPaymentController extends Controller
 {
@@ -122,10 +123,14 @@ class ManualPaymentController extends Controller
             $transaction->load('user');
         }
 
-        $adminEmails = User::query()
-            ->where('user_type', 'admin')
-            ->orWhere('user_level_id', 7)
-            ->pluck('email')
+        // Build list of admin emails. Some installations may not have `user_level_id` column.
+        $adminQuery = User::query()->where('user_type', 'admin');
+
+        if (Schema::hasColumn('users', 'user_level_id')) {
+            $adminQuery->orWhere('user_level_id', 7);
+        }
+
+        $adminEmails = $adminQuery->pluck('email')
             ->filter()
             ->unique()
             ->values()

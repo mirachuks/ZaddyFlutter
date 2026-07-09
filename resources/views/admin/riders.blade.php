@@ -43,6 +43,7 @@
                     <td class="py-3 space-y-2">
                         <button type="button" onclick="document.getElementById('rider-actions-{{ $rider->id }}').classList.toggle('hidden')" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs">Manage rider</button>
                         <div id="rider-actions-{{ $rider->id }}" class="hidden space-y-2">
+                            <a href="{{ route('admin.assign-job', ['rider_user_id' => $rider->id]) }}" class="inline-flex rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">Assign rider to job</a>
                             @if($profile)
                             <form method="POST" action="{{ route('admin.riders.status', $profile) }}" class="flex gap-2">
                                 @csrf

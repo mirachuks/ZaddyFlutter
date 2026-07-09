@@ -1,0 +1,1 @@
+C:\xampp_lite_8_4\www\TheZaddyApp\AllZaddyFutter\laravel_api\resources\views\admin\layouts\app.blade.php:27:                <a href="{{ route('admin.merge-accounts') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.merge-accounts') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Assign rider to job</a>

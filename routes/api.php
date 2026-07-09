@@ -10,17 +10,20 @@ use App\Http\Controllers\Rider\RiderProfileController;
 use App\Http\Controllers\Rider\RiderGuarantorController;
 use App\Http\Controllers\UserProfile\UserProfileController;
 use App\Http\Controllers\Escrow\EscrowTransactionController;
-use App\Http\Controllers\Report\ReportController;
 use App\Http\Controllers\Review\ReviewController;
 use App\Http\Controllers\Notification\AppNotificationController;
-use App\Http\Controllers\Payment\ManualPaymentController;
 use App\Http\Controllers\Wallet\UserWalletController;
 use App\Http\Controllers\Withdrawal\WithdrawalController;
+use App\Http\Controllers\Places\PlacesController;
+use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Payment\ManualPaymentController;
 
 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:api');
+
+Route::get('/places/suggest', [PlacesController::class, 'suggest']);
 
 // JWT auth login
 Route::get('/user/auth', [AuthController::class, 'auth']);
@@ -84,10 +87,14 @@ Route::middleware(['auth:api'])->group(function () {    // User wallet endpoints
         ->name('wallet.me');
     Route::get('wallet/transactions', [UserWalletController::class, 'myTransactions'])
         ->name('wallet.transactions');
-    Route::post('wallet/debit', [UserWalletController::class, 'debitWallet'])
-        ->name('wallet.debit');
     Route::post('wallet/topup', [UserWalletController::class, 'topUpWallet'])
         ->name('wallet.topup');
+    // Customer manual payment notify (user taps "I have made payment")
+    Route::post('payments/manual/notify', [ManualPaymentController::class, 'notify'])
+        ->name('payments.manual.notify');
+    // Admin manual top-up endpoint (admin must authenticate and have role)
+    Route::middleware(['role:admin'])->post('admin/wallet/topup', [\App\Http\Controllers\Admin\AdminController::class, 'apiTopUpUserWallet'])
+        ->name('admin.wallet.topup');
     Route::post('wallet/withdraw', [WithdrawalController::class, 'request'])
         ->name('wallet.withdraw');
     Route::get('notifications', [AppNotificationController::class, 'index'])
@@ -128,8 +135,6 @@ Route::middleware(['auth:api'])->group(function () {    // User wallet endpoints
         ->name('withdrawals.request');
     Route::get('withdrawals/mine', [\App\Http\Controllers\Withdrawal\WithdrawalController::class, 'myWithdrawals'])
         ->name('withdrawals.mine');
-    Route::post('payments/manual/notify', [ManualPaymentController::class, 'notify'])
-        ->name('payments.manual.notify');
 });
 
 
@@ -196,6 +201,11 @@ Route::middleware(['auth:api', 'role:admin'])->group(function () {
         ->name('admin.withdrawals.approve');
     Route::post('admin/withdrawals/{withdrawal}/decline', [\App\Http\Controllers\Withdrawal\AdminWithdrawalController::class, 'decline'])
         ->name('admin.withdrawals.decline');
+    // Admin API: approve a manual payment (JSON)
+    Route::post('admin/manual-payments/{transaction}/approve', [\App\Http\Controllers\Admin\AdminController::class, 'approveManualPaymentApi'])
+        ->name('admin.manual-payments.approve.api');
+    Route::post('admin/merge-accounts', [\App\Http\Controllers\Admin\AdminController::class, 'assignRiderApi'])
+        ->name('admin.assign-job.api');
 });
 
 // Logged-in user views their own profile
@@ -243,16 +253,6 @@ Route::post(
     'rider-profiles/{riderProfile}/reviews',
     [ReviewController::class, 'store']
 )->name('rider.reviews.store');
-
-// Submit a review using a job reference
-// POST /api/reviews
-Route::middleware(['auth:api'])->post('reviews', [ReviewController::class, 'storeFromJob'])
-    ->name('reviews.store');
-
-// Submit a report/dispute for a job
-// POST /api/reports
-Route::middleware(['auth:api'])->post('reports', [ReportController::class, 'store'])
-    ->name('reports.store');
 
 // Edit own review
 // PUT /api/reviews/7
@@ -395,8 +395,7 @@ Route::put('jobs/{job}', [JobController::class, 'update'])
 // PATCH /api/jobs/5/status
 // Body: { "status": "matched" }
 Route::patch('jobs/{job}/status', [JobController::class, 'changeStatus'])
-    ->name('jobs.status')
-    ->middleware('auth:api');
+    ->name('jobs.status');
 
 // Rider accepts a job directly
 // PATCH /api/jobs/5/accept

@@ -79,7 +79,7 @@ class Job extends Model
     public function riderApplication(): HasOne
     {
         return $this->hasOne(JobApplication::class)
-            ->whereIn('status', ['accepted', 'in_progress', 'delivered']);
+            ->whereIn('status', ['accepted', 'in_progress', 'delivered', 'completed']);
     }
 
     // ── Scopes ────────────────────────────────────────────────────────────────
