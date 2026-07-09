@@ -516,13 +516,22 @@ class JobController extends Controller
         }
 
         $job->update([
-            'status'       => 'completed',
+            'status'       => 'delivered',
             'delivered_at' => now(),
         ]);
 
         $notifyUserIds = [$job->user_id];
-        if ($job->acceptedApplication) {
-            $notifyUserIds[] = $job->acceptedApplication->user_rider_id;
+
+        // Ensure the job's rider application is also marked delivered so
+        // the front-end sees a consistent `delivered` state before
+        // the customer confirms to `completed`.
+        $riderApplication = $job->riderApplication ?? $job->acceptedApplication;
+        if ($riderApplication) {
+            if (! in_array($riderApplication->status, ['delivered'], true)) {
+                $riderApplication->update(['status' => 'delivered']);
+            }
+
+            $notifyUserIds[] = $riderApplication->user_rider_id;
         }
 
         foreach (array_unique($notifyUserIds) as $notifyUserId) {

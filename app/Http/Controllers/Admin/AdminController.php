@@ -971,11 +971,11 @@ class AdminController extends Controller
     {
         $this->ensureAdmin();
 
-        $withdrawal->status = 'approved';
+        $withdrawal->status = 'paid';
         $withdrawal->admin_note = $request->input('admin_note', 'Approved by admin');
         $withdrawal->save();
 
-        return back()->with('success', 'Withdrawal approved.');
+        return back()->with('success', 'Withdrawal marked as paid.');
     }
 
     public function settings()
