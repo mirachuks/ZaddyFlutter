@@ -23,7 +23,19 @@
             <div class="flex items-center justify-between">
                 <div>
                     <div class="font-medium">{{ $withdrawal->user->first_name ?? 'User' }} {{ $withdrawal->user->last_name ?? '' }}</div>
-                    <div class="text-sm text-slate-500">Amount: {{ number_format($withdrawal->amount ?? 0, 2) }} • {{ $withdrawal->status }}</div>
+                    <div class="text-sm text-slate-500">
+                        Amount: {{ number_format($withdrawal->amount ?? 0, 2) }}
+                        • Fee: {{ number_format($withdrawal->fee ?? 0, 2) }}
+                        • Total reserved: {{ number_format(($withdrawal->amount ?? 0) + ($withdrawal->fee ?? 0), 2) }}
+                        • {{ $withdrawal->status }}
+                    </div>
+                    <div class="mt-2 text-sm text-slate-500">
+                        @php $profile = $withdrawal->user->riderProfile ?? null; @endphp
+                        Bank: {{ $profile->bank_name ?? '—' }} • Account: {{ $profile->bank_account_number ?? '—' }}
+                        @if($withdrawal->reference)
+                        • Reference: {{ $withdrawal->reference }}
+                        @endif
+                    </div>
                 </div>
                 <form method="POST" action="{{ route('admin.withdrawals.approve', $withdrawal) }}" class="flex gap-2">
                     @csrf

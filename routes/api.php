@@ -17,6 +17,7 @@ use App\Http\Controllers\Withdrawal\WithdrawalController;
 use App\Http\Controllers\Places\PlacesController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Payment\ManualPaymentController;
+use App\Http\Controllers\ProfileUpdateController;
 
 
 Route::get('/user', function (Request $request) {
@@ -89,6 +90,8 @@ Route::middleware(['auth:api'])->group(function () {    // User wallet endpoints
         ->name('wallet.transactions');
     Route::post('wallet/topup', [UserWalletController::class, 'topUpWallet'])
         ->name('wallet.topup');
+    Route::post('wallet/debit', [UserWalletController::class, 'debitWallet'])
+        ->name('wallet.debit');
     // Customer manual payment notify (user taps "I have made payment")
     Route::post('payments/manual/notify', [ManualPaymentController::class, 'notify'])
         ->name('payments.manual.notify');
@@ -129,6 +132,10 @@ Route::middleware(['auth:api'])->group(function () {    // User wallet endpoints
     // Update bank details for rider (bank name/account number/code/account holder)
     Route::patch('riders/{riderProfile}/bank', [RiderProfileController::class, 'updateBankDetails'])
         ->name('riders.bank.update');
+
+    // Profile update request (submit profile changes for admin review)
+    Route::post('profile/update-request', [ProfileUpdateController::class, 'submitUpdate'])
+        ->name('profile.update-request');
 
     // Withdrawals
     Route::post('withdrawals', [\App\Http\Controllers\Withdrawal\WithdrawalController::class, 'request'])
@@ -206,6 +213,14 @@ Route::middleware(['auth:api', 'role:admin'])->group(function () {
         ->name('admin.manual-payments.approve.api');
     Route::post('admin/merge-accounts', [\App\Http\Controllers\Admin\AdminController::class, 'assignRiderApi'])
         ->name('admin.assign-job.api');
+
+    // Profile update request management (admin)
+    Route::get('admin/profile-update-requests', [ProfileUpdateController::class, 'getPending'])
+        ->name('admin.profile-update-requests.pending');
+    Route::post('admin/profile-update-requests/{id}/approve', [ProfileUpdateController::class, 'approve'])
+        ->name('admin.profile-update-requests.approve');
+    Route::post('admin/profile-update-requests/{id}/reject', [ProfileUpdateController::class, 'reject'])
+        ->name('admin.profile-update-requests.reject');
 });
 
 // Logged-in user views their own profile
@@ -395,7 +410,8 @@ Route::put('jobs/{job}', [JobController::class, 'update'])
 // PATCH /api/jobs/5/status
 // Body: { "status": "matched" }
 Route::patch('jobs/{job}/status', [JobController::class, 'changeStatus'])
-    ->name('jobs.status');
+    ->name('jobs.status')
+    ->middleware('auth:api');
 
 // Rider accepts a job directly
 // PATCH /api/jobs/5/accept
@@ -407,23 +423,27 @@ Route::patch('jobs/{job}/accept', [JobController::class, 'acceptJob'])
 // Shorthand: mark a job as delivered/completed and stamp delivered_at
 // PATCH /api/jobs/5/deliver
 Route::patch('jobs/{job}/deliver', [JobController::class, 'markDelivered'])
-    ->name('jobs.deliver');
+    ->name('jobs.deliver')
+    ->middleware('auth:api');
 
 // Auto-confirm delivery (used by client when customer doesn't confirm within timeout)
 // PATCH /api/jobs/5/auto-confirm
 Route::patch('jobs/{job}/auto-confirm', [JobController::class, 'autoConfirm'])
-    ->name('jobs.auto_confirm');
+    ->name('jobs.auto_confirm')
+    ->middleware('auth:api');
 
 // Cancel an open or matched job
 // PATCH /api/jobs/5/cancel
 Route::patch('jobs/{job}/cancel', [JobController::class, 'cancel'])
-    ->name('jobs.cancel');
+    ->name('jobs.cancel')
+    ->middleware('auth:api');
 
 // Push the expiry date forward on an open job
 // PATCH /api/jobs/5/extend
 // Body: { "expires_at": "2025-12-31 23:59:59" }
 Route::patch('jobs/{job}/extend', [JobController::class, 'extendExpiry'])
-    ->name('jobs.extend');
+    ->name('jobs.extend')
+    ->middleware('auth:api');
 
 
 // Hard-delete a job and all its applications

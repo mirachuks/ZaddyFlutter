@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Models\AppNotification;
 use App\Models\Withdrawal;
+use App\Models\PlatformFee;
 use App\Models\UserWallet;
 use App\Http\Controllers\Wallet\WalletTransactionController;
 use App\Services\SquadcoService;
@@ -34,36 +35,60 @@ class WithdrawalController extends Controller
         }
 
         $amount = (float) $request->input('amount');
+        // Flat withdrawal fee (platform). Configurable via env `WITHDRAWAL_FEE`.
+        $fee = (float) (config('payments.withdrawal_fee') ?? env('WITHDRAWAL_FEE', 50));
 
         // Check wallet and balance inside a DB transaction with row lock
         try {
-            $withdrawal = DB::transaction(function () use ($user, $amount, $request) {
+            $withdrawal = DB::transaction(function () use ($user, $amount, $request, $fee) {
                 $wallet = UserWallet::where('user_id', $user->id)->lockForUpdate()->first();
                 if (! $wallet) {
                     throw new Exception('Wallet not found for this account.');
                 }
-                if ($wallet->balance < $amount) {
+
+                $totalReserve = $amount + $fee;
+                if ($wallet->balance < $totalReserve) {
                     throw new Exception('Insufficient wallet balance.');
                 }
 
-                // Debit wallet immediately to reserve funds for withdrawal
-                $wallet->balance = $wallet->balance - $amount;
+                // Debit wallet immediately to reserve funds for withdrawal + fee
+                $wallet->balance = $wallet->balance - $totalReserve;
                 $wallet->save();
 
+                // Record two transactions: withdrawal amount and platform fee
                 WalletTransactionController::save([
                     'user_id' => $user->id,
                     'amount' => $amount,
                     'transaction_type' => 'debit',
                     'purpose' => 'withdrawal',
                 ]);
+                if ($fee > 0) {
+                    WalletTransactionController::save([
+                        'user_id' => $user->id,
+                        'amount' => $fee,
+                        'transaction_type' => 'debit',
+                        'purpose' => 'withdrawal_fee',
+                    ]);
+                }
 
-                // Create withdrawal record with pending status
-                return Withdrawal::create([
+                // Create withdrawal record with pending status (store fee separately)
+                $wd = Withdrawal::create([
                     'user_id' => $user->id,
                     'amount' => $amount,
+                    'fee' => $fee,
                     'status' => 'pending',
                     'admin_note' => $request->input('note', ''),
                 ]);
+
+                // Track platform fee record (not yet collected until admin processes)
+                PlatformFee::create([
+                    'withdrawal_id' => $wd->id,
+                    'amount' => $fee,
+                    'collected' => false,
+                    'description' => 'Withdrawal fee',
+                ]);
+
+                return $wd;
             });
 
             AppNotification::create([

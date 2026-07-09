@@ -36,26 +36,8 @@ class AdminWithdrawalController extends Controller
         try {
             DB::transaction(function () use ($withdrawal, $request) {
                 $userId = $withdrawal->user_id;
-                $wallet = UserWallet::where('user_id', $userId)->lockForUpdate()->first();
-                if (! $wallet) {
-                    throw new Exception('Wallet not found.');
-                }
 
-                if ($wallet->balance < $withdrawal->amount) {
-                    throw new Exception('Insufficient funds to approve withdrawal.');
-                }
-
-                // Debit wallet
-                $wallet->balance -= $withdrawal->amount;
-                $wallet->save();
-                WalletTransactionController::save([
-                    'user_id' => $userId,
-                    'amount' => $withdrawal->amount,
-                    'transaction_type' => 'debit',
-                    'purpose' => 'withdrawal_approved',
-                ]);
-
-                // Attempt payout via Squadco
+                // Attempt payout via Squadco using stored rider bank details.
                 $squadco = app(SquadcoService::class);
                 $user = $withdrawal->user()->first();
                 $profile = $user ? $user->riderProfile()->first() : null;
@@ -78,7 +60,6 @@ class AdminWithdrawalController extends Controller
                 try {
                     $resp = $squadco->payoutToBank($payload);
                     \Illuminate\Support\Facades\Log::info('Squadco payout response', ['resp' => $resp]);
-                    // Accept multiple response shapes as success: non-empty array/object or explicit success flag
                     $isSuccess = false;
                     if (is_array($resp) || is_object($resp)) {
                         if (!empty($resp)) {
@@ -98,7 +79,33 @@ class AdminWithdrawalController extends Controller
                         $withdrawal->status = 'approved';
                     } else {
                         $withdrawal->status = 'failed';
-                        // refund
+                        // Refund only the requested amount (platform keeps the fee)
+                        $wallet = UserWallet::where('user_id', $userId)->lockForUpdate()->first();
+                        if ($wallet) {
+                            $wallet->balance += $withdrawal->amount;
+                            $wallet->save();
+                            WalletTransactionController::save([
+                                'user_id' => $userId,
+                                'amount' => $withdrawal->amount,
+                                'transaction_type' => 'credit',
+                                'purpose' => 'withdrawal_refund',
+                            ]);
+                        }
+                    }
+                    $withdrawal->reference = $reference;
+                    $withdrawal->provider_response = is_array($resp) || is_object($resp) ? json_decode(json_encode($resp), true) : ['raw' => (string) $resp];
+                    $withdrawal->admin_note = $request->input('admin_note', $withdrawal->admin_note);
+                    $withdrawal->save();
+
+                    // Mark associated platform fee as collected (platform keeps fee on both success and failure)
+                    \App\Models\PlatformFee::where('withdrawal_id', $withdrawal->id)->update(['collected' => true]);
+                } catch (Exception $e) {
+                    // On exception, mark failed and refund the requested amount
+                    $withdrawal->status = 'failed';
+                    $withdrawal->admin_note = $request->input('admin_note', $withdrawal->admin_note);
+                    $withdrawal->save();
+                    $wallet = UserWallet::where('user_id', $userId)->lockForUpdate()->first();
+                    if ($wallet) {
                         $wallet->balance += $withdrawal->amount;
                         $wallet->save();
                         WalletTransactionController::save([
@@ -108,21 +115,6 @@ class AdminWithdrawalController extends Controller
                             'purpose' => 'withdrawal_refund',
                         ]);
                     }
-                    $withdrawal->reference = $reference;
-                    $withdrawal->provider_response = is_array($resp) || is_object($resp) ? json_decode(json_encode($resp), true) : ['raw' => (string) $resp];
-                    $withdrawal->admin_note = $request->input('admin_note', $withdrawal->admin_note);
-                    $withdrawal->save();
-                } catch (Exception $e) {
-                    $withdrawal->status = 'failed';
-                    $withdrawal->save();
-                    $wallet->balance += $withdrawal->amount;
-                    $wallet->save();
-                    WalletTransactionController::save([
-                        'user_id' => $userId,
-                        'amount' => $withdrawal->amount,
-                        'transaction_type' => 'credit',
-                        'purpose' => 'withdrawal_refund',
-                    ]);
                 }
             });
 

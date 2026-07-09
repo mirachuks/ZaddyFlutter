@@ -45,5 +45,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('settings', [AdminController::class, 'settings'])->name('settings');
         Route::post('settings/profile', [AdminController::class, 'updateProfile'])->name('settings.profile');
         Route::post('settings/password', [AdminController::class, 'updatePassword'])->name('settings.password');
+        Route::get('profile-updates', [AdminController::class, 'profileUpdates'])->name('profile-updates');
+        Route::post('profile-updates/{id}/approve', [AdminController::class, 'approveProfileUpdate'])->name('profile-updates.approve');
+        Route::post('profile-updates/{id}/reject', [AdminController::class, 'rejectProfileUpdate'])->name('profile-updates.reject');
     });
 });

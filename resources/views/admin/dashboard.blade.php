@@ -25,6 +25,10 @@
         <div class="mt-2 text-3xl font-semibold">{{ $stats['kyc_pending'] }}</div>
     </div>
     <div class="rounded-2xl bg-white p-5 shadow-sm">
+        <div class="text-sm text-slate-500">Profile updates</div>
+        <div class="mt-2 text-3xl font-semibold">{{ $stats['pending_profile_updates'] ?? 0 }}</div>
+    </div>
+    <div class="rounded-2xl bg-white p-5 shadow-sm">
         <div class="text-sm text-slate-500">Pending items</div>
         <div class="mt-2 text-3xl font-semibold">{{ $stats['pending_disputes'] + $stats['pending_withdrawals'] }}</div>
     </div>
@@ -40,6 +44,7 @@
         <div class="mt-5 space-y-3">
             <a href="{{ route('admin.active-users') }}" class="block rounded-lg border border-slate-200 p-3 transition hover:border-emerald-400 hover:bg-emerald-50">• View active users</a>
             <a href="{{ route('admin.riders') }}" class="block rounded-lg border border-slate-200 p-3 transition hover:border-emerald-400 hover:bg-emerald-50">• Review and manage riders</a>
+            <a href="{{ route('admin.profile-updates') }}" class="block rounded-lg border border-slate-200 p-3 transition hover:border-emerald-400 hover:bg-emerald-50">• Review profile update requests</a>
             <a href="{{ route('admin.orders') }}" class="block rounded-lg border border-slate-200 p-3 transition hover:border-emerald-400 hover:bg-emerald-50">• Review delivery jobs and order details</a>
             <a href="{{ route('admin.disputes') }}" class="block rounded-lg border border-slate-200 p-3 transition hover:border-emerald-400 hover:bg-emerald-50">• Resolve disputes and review withdrawals</a>
             <a href="{{ route('admin.reports') }}" class="block rounded-lg border border-slate-200 p-3 transition hover:border-emerald-400 hover:bg-emerald-50">• Review platform charges and wallet balances</a>
@@ -49,6 +54,7 @@
         <h2 class="text-lg font-semibold">Priority queues</h2>
         <div class="mt-4 space-y-3 text-sm text-slate-500">
             <div class="rounded-lg border border-slate-200 p-3">KYC reviews: {{ $stats['kyc_pending'] }}</div>
+            <div class="rounded-lg border border-slate-200 p-3">Profile updates: {{ $stats['pending_profile_updates'] ?? 0 }}</div>
             <div class="rounded-lg border border-slate-200 p-3">Disputes: {{ $stats['pending_disputes'] }}</div>
             <div class="rounded-lg border border-slate-200 p-3">Withdrawals: {{ $stats['pending_withdrawals'] }}</div>
             <div class="rounded-lg border border-slate-200 p-3">Manual payments: {{ $stats['pending_manual_payments'] }}</div>

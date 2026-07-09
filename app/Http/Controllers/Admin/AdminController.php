@@ -119,6 +119,7 @@ class AdminController extends Controller
             'pending_disputes' => $this->countByStatus(Dispute::query(), 'pending'),
             'pending_withdrawals' => $this->countByStatus(Withdrawal::query(), 'pending'),
             'pending_manual_payments' => EscrowTransaction::where('manual_payment_notified', true)->where('status', 'pending')->count(),
+            'pending_profile_updates' => \App\Models\ProfileUpdateRequest::where('status', 'pending')->count(),
         ];
 
         return view('admin.dashboard', compact('stats'));
@@ -811,7 +812,8 @@ class AdminController extends Controller
     {
         $this->ensureAdmin();
 
-        $query = RiderProfile::with('user')->where('status', 'pending');
+        // Fetch pending and inactive riders for verification
+        $query = RiderProfile::with('user')->whereIn('status', ['pending', 'inactive']);
         $search = trim((string) $request->input('search', ''));
 
         if ($search !== '') {
@@ -835,10 +837,30 @@ class AdminController extends Controller
     {
         $this->ensureAdmin();
 
-        $rider->status = $request->input('status', 'approved');
-        $rider->save();
+        $action = $request->input('status', 'approved');
+        $riderUser = $rider->user;
 
-        return back()->with('success', 'KYC review recorded.');
+        if ($action === 'approved') {
+            // Update rider profile status and availability
+            $rider->status = 'active';
+            $rider->is_available = 'yes';
+            $rider->save();
+
+            // Update user KYC status and verification
+            if ($riderUser) {
+                $riderUser->kyc_status = 'active';
+                $riderUser->is_verified = 'yes';
+                $riderUser->save();
+            }
+
+            return back()->with('success', 'Rider KYC approved. Profile activated and marked as available.');
+        } else {
+            // Reject or defer the KYC
+            $rider->status = $action; // 'rejected' or other status
+            $rider->save();
+
+            return back()->with('success', 'KYC review recorded.');
+        }
     }
 
     public function disputes(Request $request)
@@ -1005,5 +1027,84 @@ class AdminController extends Controller
             'count' => (int) $query->count(),
             'column_available' => $columnAvailable,
         ];
+    }
+
+    /**
+     * Display pending profile update requests for admin review
+     */
+    public function profileUpdates(Request $request)
+    {
+        $this->ensureAdmin();
+
+        $requests = \App\Models\ProfileUpdateRequest::with('user')
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->paginate(15);
+
+        $stats = [
+            'pending' => \App\Models\ProfileUpdateRequest::where('status', 'pending')->count(),
+            'approved' => \App\Models\ProfileUpdateRequest::where('status', 'approved')->count(),
+            'rejected' => \App\Models\ProfileUpdateRequest::where('status', 'rejected')->count(),
+        ];
+
+        return view('admin.profile-updates', compact('requests', 'stats'));
+    }
+
+    /**
+     * Approve a profile update request
+     */
+    public function approveProfileUpdate(Request $request, $id)
+    {
+        $this->ensureAdmin();
+
+        $updateRequest = \App\Models\ProfileUpdateRequest::find($id);
+        if (!$updateRequest) {
+            return back()->withErrors(['error' => 'Profile update request not found']);
+        }
+
+        $user = $updateRequest->user;
+        if (!$user) {
+            return back()->withErrors(['error' => 'User not found']);
+        }
+
+        // Update user profile with new data
+        $user->update($updateRequest->new_data);
+
+        // If user is a rider, also update RiderProfile to keep names in sync
+        if ($user->riderProfile && isset($updateRequest->new_data['first_name'])) {
+            $user->riderProfile->update([
+                'first_name' => $updateRequest->new_data['first_name'],
+                'last_name' => $updateRequest->new_data['last_name'] ?? $user->riderProfile->last_name,
+            ]);
+        }
+
+        // Update request status
+        $updateRequest->update([
+            'status' => 'approved',
+            'admin_note' => $request->input('admin_note'),
+        ]);
+
+        return back()->with('success', "Profile update for {$user->first_name} approved successfully.");
+    }
+
+    /**
+     * Reject a profile update request
+     */
+    public function rejectProfileUpdate(Request $request, $id)
+    {
+        $this->ensureAdmin();
+
+        $updateRequest = \App\Models\ProfileUpdateRequest::find($id);
+        if (!$updateRequest) {
+            return back()->withErrors(['error' => 'Profile update request not found']);
+        }
+
+        $user = $updateRequest->user;
+        $updateRequest->update([
+            'status' => 'rejected',
+            'admin_note' => $request->input('admin_note'),
+        ]);
+
+        return back()->with('success', "Profile update for {$user->first_name} rejected.");
     }
 }

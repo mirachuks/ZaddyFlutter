@@ -27,6 +27,7 @@
                 <a href="{{ route('admin.assign-job') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.assign-job') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Assign rider to job</a>
                 <a href="{{ route('admin.reports') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.reports') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Platform charges</a>
                 <a href="{{ route('admin.kyc') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.kyc') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">KYC approvals</a>
+                <a href="{{ route('admin.profile-updates') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.profile-updates') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Profile updates</a>
                 <a href="{{ route('admin.disputes') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.disputes') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Disputes</a>
                 <a href="{{ route('admin.withdrawals') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.withdrawals') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Withdrawals</a>
                 <a href="{{ route('admin.settings') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.settings') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Settings</a>
