@@ -1,0 +1,10 @@
+merge_view_refs.txt:1:C:\xampp_lite_8_4\www\TheZaddyApp\AllZaddyFutter\laravel_api\resources\views\admin\layouts\app.blade.php:27:                <a href="{{ route('admin.merge-accounts') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.merge-accounts') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Assign rider to job</a>
+resources\views\admin\layouts\app.blade.php:27:                <a href="{{ route('admin.merge-accounts') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.merge-accounts') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Assign rider to job</a>
+resources\views\admin\merge_accounts.blade.php:28:    <form method="POST" action="{{ route('admin.merge-accounts.post') }}" class="mt-6 space-y-6">
+resources\views\admin\riders.blade.php:46:                            <a href="{{ route('admin.merge-accounts', ['rider_user_id' => $rider->id]) }}" class="inline-flex rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">Assign rider to job</a>
+routes\api.php:207:    Route::post('admin/merge-accounts', [\App\Http\Controllers\Admin\AdminController::class, 'mergeRiderApi'])
+routes\api.php:208:        ->name('admin.merge-accounts.api');
+routes\web.php:35:        Route::get('merge-accounts', [AdminController::class, 'mergeRiderForm'])->name('merge-accounts');
+routes\web.php:36:        Route::post('merge-accounts', [AdminController::class, 'mergeRider'])->name('merge-accounts.post');
+storage\framework\views\56127705ce82ddcd0a4a19dfcaaeda71.php:28:    <form method="POST" action="<?php echo e(route('admin.merge-accounts.post')); ?>" class="mt-6 space-y-6">
+storage\framework\views\e78e03ee7db3742e4d62bd2928a70f30.php:27:                <a href="<?php echo e(route('admin.merge-accounts')); ?>" class="block rounded-lg px-4 py-3 <?php echo e(request()->routeIs('admin.merge-accounts') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800'); ?>">Merge rider accounts</a>
