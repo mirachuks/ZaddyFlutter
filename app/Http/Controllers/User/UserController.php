@@ -5,7 +5,6 @@ namespace App\Http\Controllers\User;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Wallet\UserWalletController;
-use App\Services\SquadcoService;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Image\ImageController;
 use App\Http\Controllers\Email\Mailer;
@@ -68,13 +67,6 @@ class UserController extends Controller
      **/
     public function create(Request $request)
     {
-        // Temporarily increase execution time for registration flow
-        if (function_exists('set_time_limit')) {
-            @set_time_limit(120);
-        } else {
-            @ini_set('max_execution_time', '120');
-        }
-
         Log::info('UserController:create called', ['email' => $request->input('email')]);
 
         $validation = Validator::make(
@@ -108,88 +100,14 @@ class UserController extends Controller
             });
             Log::info('UserController:create completed DB transaction', ['email' => $request->input('email')]);
 
-            try {
-                $squadco = app(SquadcoService::class);
-
-                if (!empty($request['first_name'])) {
-                    $full_name = $request['first_name'] . ' ' . $request['last_name'];
-                } elseif (!empty($request['name'])) {
-                    $full_name = $request['name'];
-                } else {
-                    $full_name = $request->input('email');
-                }
-
-                $ref = 'SQVA' . time() . mt_rand(10000000, 9999999999);
-                $payload = [
-                    'account_name' => $full_name,
-                    'email' => $request->input('email'),
-                    'currency' => env('DEFAULT_CURRENCY', 'NGN'),
-                    'reference' => $ref,
-                    'phone' => $request->input('mobile_number') ?? $request->input('mobile_no') ?? $request->input('phone'),
-                ];
-
-                $resp = $squadco->createVirtualAccount($payload);
-
-                // Map common response shapes to our StaticVirtualAccount format
-                $account_number = null;
-                $bank_name = null;
-                $order_ref = $ref;
-
-                if (is_array($resp) || is_object($resp)) {
-                    $r = is_array($resp) ? $resp : (array) $resp;
-                    if (!empty($r['data'])) {
-                        $d = (array) $r['data'];
-                        // common shapes
-                        if (!empty($d['account_number'])) {
-                            $account_number = $d['account_number'];
-                        } elseif (!empty($d['account'][0]['account_number'])) {
-                            $account_number = $d['account'][0]['account_number'];
-                        } elseif (!empty($d['virtual_account']['account_number'])) {
-                            $account_number = $d['virtual_account']['account_number'];
-                        }
-
-                        if (!empty($d['bank_name'])) {
-                            $bank_name = $d['bank_name'];
-                        } elseif (!empty($d['account'][0]['bank_name'])) {
-                            $bank_name = $d['account'][0]['bank_name'];
-                        } elseif (!empty($d['virtual_account']['bank'])) {
-                            $bank_name = $d['virtual_account']['bank'];
-                        }
-
-                        if (!empty($d['reference'])) {
-                            $order_ref = $d['reference'];
-                        }
-                    }
-
-                    // fallback top-level
-                    if (!$account_number) {
-                        if (!empty($r['account_number'])) $account_number = $r['account_number'];
-                        if (!empty($r['virtual_account']['account_number'])) $account_number = $r['virtual_account']['account_number'];
-                        if (!empty($r['data']['account_number'])) $account_number = $r['data']['account_number'];
-                    }
-                }
-
-                if (!empty($account_number)) {
-                    $user = User::where('email', $request->input('email'))->first();
-                    $svadata = [
-                        'account_number' => $account_number,
-                        'bank_name' => $bank_name ?? 'Unknown',
-                        'txt_ref' => $ref,
-                        'order_ref' => $order_ref ?? $ref,
-                        'email' => $request->input('email'),
-                        'user_id' => $user->id ?? null,
-                    ];
-
-                    \App\Http\Controllers\Funding\StaticVirtualAccountController::save($svadata);
-                }
-            } catch (\Throwable $exception) {
-                Log::error('UserController:create virtual account (Squadco) failed', [
-                    'email' => $request->input('email'),
-                    'message' => $exception->getMessage(),
-                    'payload' => $payload ?? null,
-                    'response' => isset($resp) ? $resp : null,
-                ]);
-            }
+            // Queue Squadco virtual account creation to run in background
+            // This prevents registration timeout while external API call completes
+            dispatch(new \App\Jobs\CreateSquadcoVirtualAccountJob(
+                $request->input('email'),
+                $request->input('first_name'),
+                $request->input('last_name'),
+                $request->input('mobile_number')
+            ))->onQueue('default');
 
             $login = AuthController::loginAtReg($request);
             Log::info('UserController:create login generated', ['email' => $request->input('email'), 'token_present' => !empty($login['token'])]);
