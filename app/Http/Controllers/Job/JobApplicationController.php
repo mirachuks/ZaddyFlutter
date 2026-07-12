@@ -113,7 +113,7 @@ class JobApplicationController extends Controller
             'message' => 'Application submitted successfully.',
             'data'    => $application->load([
                 'job:id,title,status,price,user_id',
-                'userRider:id,name,email',
+                'userRider:id,first_name,last_name,email',
             ]),
         ], 201);
     }
@@ -361,17 +361,39 @@ class JobApplicationController extends Controller
         }
 
         if (in_array($request->status, ['accepted', 'rejected'])) {
+            $payload = [
+                'title' => $request->status === 'accepted' ? 'Application Accepted' : 'Application Rejected',
+                'body' => $request->status === 'accepted'
+                    ? "Your application for \"{$jobApplication->job->title}\" was accepted."
+                    : "Your application for \"{$jobApplication->job->title}\" was rejected.",
+            ];
+
+            // When accepted, include an action for the job owner to proceed to payment.
+            if ($request->status === 'accepted') {
+                $payload['action'] = 'redirect_to_payment';
+                $payload['job_id'] = $jobApplication->job_id;
+            }
+
             AppNotification::create([
                 'user_id' => $jobApplication->user_rider_id,
                 'type' => $request->status === 'accepted' ? 'application_accepted' : 'application_rejected',
-                'payload' => [
-                    'title' => $request->status === 'accepted' ? 'Application Accepted' : 'Application Rejected',
-                    'body' => $request->status === 'accepted'
-                        ? "Your application for \"{$jobApplication->job->title}\" was accepted."
-                        : "Your application for \"{$jobApplication->job->title}\" was rejected.",
-                ],
+                'payload' => $payload,
                 'is_read' => false,
             ]);
+            // Notify the job owner to proceed to payment when an application is accepted
+            if ($request->status === 'accepted' && $jobApplication->job) {
+                AppNotification::create([
+                    'user_id' => $jobApplication->job->user_id,
+                    'type' => 'rider_assigned',
+                    'payload' => [
+                        'title' => 'Rider Accepted',
+                        'body' => "A rider accepted your job \"{$jobApplication->job->title}\". Proceed to payment.",
+                        'action' => 'redirect_to_payment',
+                        'job_id' => $jobApplication->job_id,
+                    ],
+                    'is_read' => false,
+                ]);
+            }
         }
 
         return response()->json([

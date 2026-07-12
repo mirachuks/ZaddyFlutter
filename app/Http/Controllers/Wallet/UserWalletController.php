@@ -344,9 +344,9 @@ class UserWalletController extends Controller
             $job->status = 'in_progress';
         }
 
-        if ($job->payment_status !== 'paid') {
-            $job->payment_status = 'paid';
-        }
+        // Wallet payments are immediate — mark the job as paid so downstream
+        // flows (reports, admin views) reflect the payment.
+        $job->payment_status = 'paid';
 
         $job->save();
 

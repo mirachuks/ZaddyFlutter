@@ -102,12 +102,18 @@ class UserController extends Controller
 
             // Queue Squadco virtual account creation to run in background
             // This prevents registration timeout while external API call completes
-            dispatch(new \App\Jobs\CreateSquadcoVirtualAccountJob(
-                $request->input('email'),
-                $request->input('first_name'),
-                $request->input('last_name'),
-                $request->input('mobile_number')
-            ))->onQueue('default');
+            // Wrap dispatch in try/catch so registration doesn't fail if the
+            // queue table/schema is not available or misconfigured.
+            try {
+                dispatch(new \App\Jobs\CreateSquadcoVirtualAccountJob(
+                    $request->input('email'),
+                    $request->input('first_name'),
+                    $request->input('last_name'),
+                    $request->input('mobile_number')
+                ))->onQueue('default');
+            } catch (\Throwable $e) {
+                Log::warning('Failed to dispatch CreateSquadcoVirtualAccountJob', ['error' => $e->getMessage()]);
+            }
 
             $login = AuthController::loginAtReg($request);
             Log::info('UserController:create login generated', ['email' => $request->input('email'), 'token_present' => !empty($login['token'])]);

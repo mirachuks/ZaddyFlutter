@@ -12,6 +12,7 @@ use App\Models\JobApplication;
 use App\Models\RiderProfile;
 use App\Models\StaticVirtualAccount;
 use App\Models\User;
+use App\Models\WalletTransaction;
 use App\Http\Controllers\Wallet\UserWalletController;
 use App\Models\UserWallet;
 use App\Models\Withdrawal;
@@ -938,6 +939,57 @@ class AdminController extends Controller
     /**
      * Display manual payment notifications awaiting admin review
      */
+    public function walletCreditForm(Request $request)
+    {
+        $this->ensureAdmin();
+
+        $query = User::with('userwallet');
+        $search = trim((string) $request->input('search', ''));
+        $userType = trim((string) $request->input('user_type', ''));
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('mobile_number', 'like', "%{$search}%");
+            });
+        }
+
+        if ($userType !== '') {
+            $query->where('user_type', $userType);
+        }
+
+        $users = $query->orderBy('first_name')->paginate(20)->appends($request->only(['search', 'user_type']));
+
+        $walletTransactions = \App\Models\WalletTransaction::with('user')
+            ->latest()
+            ->limit(10)
+            ->get();
+
+        return view('admin.rider_credit', compact('users', 'search', 'userType', 'walletTransactions'));
+    }
+
+    public function creditWallet(Request $request)
+    {
+        $this->ensureAdmin();
+
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'purpose' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        UserWalletController::ensureWallet($data['user_id']);
+        UserWalletController::credit([
+            'user_id' => $data['user_id'],
+            'amount' => $data['amount'],
+            'purpose' => $data['purpose'] ?? 'admin_credit',
+        ]);
+
+        return back()->with('success', 'User wallet has been credited successfully.');
+    }
+
     public function manualPayments(Request $request)
     {
         $this->ensureAdmin();
@@ -971,11 +1023,11 @@ class AdminController extends Controller
     {
         $this->ensureAdmin();
 
-        $withdrawal->status = 'paid';
+        $withdrawal->status = 'approved';
         $withdrawal->admin_note = $request->input('admin_note', 'Approved by admin');
         $withdrawal->save();
 
-        return back()->with('success', 'Withdrawal marked as paid.');
+        return back()->with('success', 'Withdrawal approved.');
     }
 
     public function settings()

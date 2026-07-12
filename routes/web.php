@@ -30,6 +30,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('riders/{rider}/notify', [AdminController::class, 'notifyRider'])->name('riders.notify');
         Route::get('virtual-accounts', [AdminController::class, 'virtualAccounts'])->name('virtual-accounts');
         Route::get('rider-wallets', [AdminController::class, 'riderWallets'])->name('rider-wallets');
+        Route::get('wallet-credit', [AdminController::class, 'walletCreditForm'])->name('wallet-credit');
+        Route::post('wallet-credit', [AdminController::class, 'creditWallet'])->name('wallet-credit.post');
         Route::get('manual-payments', [AdminController::class, 'manualPayments'])->name('manual-payments');
         Route::post('manual-payments/{transaction}/approve', [AdminController::class, 'approveManualPayment'])->name('manual-payments.approve');
         Route::get('merge-accounts', [AdminController::class, 'assignRiderForm'])->name('assign-job');

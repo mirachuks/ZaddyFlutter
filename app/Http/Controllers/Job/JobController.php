@@ -10,6 +10,8 @@ use App\Models\JobApplication;
 use App\Models\User;
 use App\Models\EscrowTransaction;
 use App\Models\UserWallet;
+use App\Models\RiderProfile;
+use App\Http\Controllers\Wallet\UserWalletController;
 use App\Http\Controllers\Job\JobItemController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -377,9 +379,23 @@ class JobController extends Controller
 
         $updateData = ['status' => $request->status];
 
-        // Automatically mark payment paid when moving from accepted to in_progress.
+        // Only allow transitioning from 'accepted' to 'in_progress' when payment
+        // has been confirmed, except when the payment method is the user's wallet.
         if ($request->status === 'in_progress' && $job->status === 'accepted') {
-            $updateData['payment_status'] = 'paid';
+            $escrow = EscrowTransaction::where('job_id', $job->id)->latest()->first();
+            $isWalletPayment = $escrow && ($escrow->payment_method === 'wallet' || $escrow->payment_method === 'user_wallet');
+
+            if (! $isWalletPayment && $job->payment_status !== 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot start job: payment not confirmed. Await admin approval or complete payment.',
+                ], 422);
+            }
+
+            // For wallet payments we allow starting the job without auto-marking
+            // the job's `payment_status` to 'paid'. The wallet debit flow will
+            // update balances and payout the rider but the payment_status field
+            // remains under the payment/release flow control.
         }
 
         // Stamp delivered_at when job is marked completed or delivered
@@ -471,6 +487,19 @@ class JobController extends Controller
                 ]
             );
 
+            // Notify the job owner to proceed to payment immediately.
+            AppNotification::create([
+                'user_id' => $job->user_id,
+                'type' => 'rider_accepted',
+                'payload' => [
+                    'title' => 'Rider Accepted Your Job',
+                    'body' => "A rider accepted your job \"{$job->title}\". Please complete payment.",
+                    'action' => 'redirect_to_payment',
+                    'job_id' => $job->id,
+                ],
+                'is_read' => false,
+            ]);
+
             // Fetch fresh job data with attached items so the rider screens
             // receive the full parcel breakdown immediately after acceptance.
             $updatedJob = $job->fresh();
@@ -532,6 +561,51 @@ class JobController extends Controller
             }
 
             $notifyUserIds[] = $riderApplication->user_rider_id;
+        }
+
+        // If a manual payment or escrow was created before the rider was assigned,
+        // and admin approved the payment (held status), we may need to credit
+        // the rider now that the job has been delivered.
+        try {
+            $escrowTransaction = EscrowTransaction::where('job_id', $job->id)
+                ->whereIn('status', [EscrowTransaction::STATUS_PENDING, EscrowTransaction::STATUS_HELD])
+                ->first();
+
+            if ($escrowTransaction && $riderApplication) {
+                // Ensure rider_profile_id is set on the transaction
+                if (! $escrowTransaction->rider_profile_id) {
+                    $rpId = RiderProfile::where('user_id', $riderApplication->user_rider_id)->value('id');
+                    if ($rpId) {
+                        $escrowTransaction->rider_profile_id = $rpId;
+                    }
+                }
+
+                $amountToCredit = max(0, ($escrowTransaction->balance ?? 0) - ($escrowTransaction->platform_fee ?? 0));
+
+                // If transaction already held, credit the rider now (idempotent check)
+                if ($escrowTransaction->status === EscrowTransaction::STATUS_HELD && $amountToCredit > 0) {
+                    // Prevent double-credit by checking rider_payout
+                    if (empty($escrowTransaction->rider_payout) || $escrowTransaction->rider_payout != $amountToCredit) {
+                        $escrowTransaction->rider_payout = $amountToCredit;
+                        $escrowTransaction->save();
+
+                        // Credit rider wallet
+                        UserWalletController::ensureWallet($riderApplication->user_rider_id);
+                        UserWalletController::credit([
+                            'user_id' => $riderApplication->user_rider_id,
+                            'amount' => $amountToCredit,
+                            'purpose' => 'job_earnings',
+                        ]);
+                    }
+                }
+
+                // Persist any rider_profile_id changes
+                if ($escrowTransaction->isDirty()) {
+                    $escrowTransaction->save();
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::error('Failed to process escrow on delivery: ' . $e->getMessage(), ['job_id' => $job->id]);
         }
 
         foreach (array_unique($notifyUserIds) as $notifyUserId) {

@@ -23,6 +23,7 @@
                 <a href="{{ route('admin.orders') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.orders') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Orders</a>
                 <a href="{{ route('admin.virtual-accounts') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.virtual-accounts') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Virtual accounts</a>
                 <a href="{{ route('admin.rider-wallets') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.rider-wallets') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Rider wallets</a>
+                <a href="{{ route('admin.wallet-credit') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.wallet-credit') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Credit wallet</a>
                 <a href="{{ route('admin.manual-payments') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.manual-payments') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Confirm payments</a>
                 <a href="{{ route('admin.assign-job') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.assign-job') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Assign rider to job</a>
                 <a href="{{ route('admin.reports') }}" class="block rounded-lg px-4 py-3 {{ request()->routeIs('admin.reports') ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800' }}">Platform charges</a>

@@ -18,6 +18,7 @@ use App\Http\Controllers\Places\PlacesController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Payment\ManualPaymentController;
 use App\Http\Controllers\ProfileUpdateController;
+use App\Http\Controllers\Upload\ImageUploadController;
 
 
 Route::get('/user', function (Request $request) {
@@ -52,6 +53,7 @@ Route::post('user/update', [UserController::class, 'update']);
 Route::get('user/delete/{id}', [UserController::class, 'delete']);
 Route::post('user/change-password', [UserController::class, 'changePassword']);
 Route::post('user/upload-img', [UserController::class, 'uploadAvatar']);
+Route::post('image/upload-normalize', [ImageUploadController::class, 'uploadNormalize']);
 Route::get('user/unblock/{id}', [UserController::class, 'unblock']);
 Route::get('user/ban/{id}', [UserController::class, 'ban']);
 Route::get('user/suspend/{id}', [UserController::class, 'suspend']);
@@ -404,12 +406,12 @@ Route::get('my-jobs/{userId}', [JobController::class, 'myJobs'])
 
 // Post a new job
 // POST /api/jobs
-Route::post('jobs', [JobController::class, 'store'])
+Route::middleware(['auth:api'])->post('jobs', [JobController::class, 'store'])
     ->name('jobs.store');
 
 // Edit an open job
 // PUT /api/jobs/5
-Route::put('jobs/{job}', [JobController::class, 'update'])
+Route::middleware(['auth:api'])->put('jobs/{job}', [JobController::class, 'update'])
     ->name('jobs.update');
 
 // Move job through status lifecycle (open → matched → in_progress → completed)
